@@ -25,6 +25,7 @@
                     <h1><i class="fas fa-robot"></i> LongGBot</h1>
                     <p>Advanced AI Assistant with Multiple Models</p>
                     <button id="enterCodeBtn" class="btn" style="font-size:0.85em;padding:4px 10px;" onclick="showCodeModal()">Enter Premium Code</button>
+                    <button id="botInfoBtn" class="btn" style="font-size:0.85em;padding:4px 10px;margin-left:6px;" onclick="showBotInfoModal()"><i class="fas fa-info-circle"></i> All Models Info</button>
                     <span id="premiumIndicator" class="premium-indicator{% if premium %} active{% endif %}" style="align-items: center;">
                         <span style="color: #2ecc40; font-weight: bold;"><i class="fas fa-crown"></i> Premium</span>
                     </span>
@@ -83,7 +84,8 @@
                             id="messageInput" 
                             class="chat-input" 
                             placeholder="Type your message here..."
-                            onkeydown="handleKeyPress(event)"></textarea>
+                            onkeydown="handleKeyPress(event)"
+                            onpaste="handlePaste(event)"></textarea>
                         <button class="send-btn" onclick="sendMessage()" id="sendBtn">
                             <i class="fas fa-paper-plane"></i>
                         </button>
@@ -167,6 +169,22 @@
         </div>
     </div>
 
+    <!-- Bot Info Modal -->
+    <div id="botInfoModal" class="modal-overlay" style="display:none;z-index:3000;">
+        <div class="modal-content" style="max-width:420px;">
+            <div class="section-title"><i class="fas fa-info-circle"></i> Bot Info</div>
+            <ul style="font-size:0.97em;line-height:1.5;margin:0 0 10px 0;padding-left:18px;">
+                <li><b>GPT 4o Mini Search</b>: Free, Web search, <span style="color:#b8860b">No image analysis</span></li>
+                <li><b>Claude Opus 4</b>: Premium, No web search, <span style="color:#2ecc40">Image analysis</span></li>
+                <li><b>GPT o3 High</b>: Premium, No web search, <span style="color:#2ecc40">Image analysis</span></li>
+                <li><b>Gemini 2.5 Pro</b>: Premium, No web search, <span style="color:#2ecc40">Image analysis</span></li>
+                <li><b>Perplexity Sonar Reasoning Pro</b>: Premium, Web search, <span style="color:#b8860b">No image analysis</span></li>
+                <li><b>All Image Models</b>: Premium, <span style="color:#2ecc40">Image generation</span></li>
+            </ul>
+            <div style="font-size:0.93em;color:#888;">Use the <b>Enter Premium Code</b> button to unlock all features and models.</div>
+            <button class="btn" style="margin-top:18px;" onclick="hideBotInfoModal()">Close</button>
+        </div>
+    </div>
     <!-- Model ID to Name mapping for JS -->
     <script id="model-names" type="application/json">{
 {% for model_id, model_name in chat_models %}    "{{ model_id }}": "{{ model_name }}"{% if not loop.last %},{% endif %}
@@ -225,6 +243,48 @@
             if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
                 sendMessage();
+            }
+        }
+
+        function handlePaste(event) {
+            const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const file = items[i].getAsFile();
+                    if (file) {
+                        // Show preview (optional)
+                        const reader = new FileReader();
+                        let previewDiv = null;
+                        reader.onload = function(e) {
+                            previewDiv = addMessage('user', '<b>Image pasted and uploading...</b><br><img src="' + e.target.result + '" style="max-width:200px;max-height:200px;">');
+                        };
+                        reader.readAsDataURL(file);
+                        // Upload image
+                        const formData = new FormData();
+                        formData.append('image', file);
+                        fetchWithCode('/upload_image', {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (previewDiv && previewDiv.parentNode) previewDiv.parentNode.removeChild(previewDiv);
+                            if (data.success) {
+                                currentImageData = data.image;
+                                addMessage('user', 'Image uploaded successfully!');
+                                addMessage('assistant', 'Image uploaded! You can now ask me to analyze it or use it for editing.');
+                            } else {
+                                addMessage('assistant', `Error: ${data.error}`, 'error');
+                            }
+                        })
+                        .catch(error => {
+                            if (previewDiv && previewDiv.parentNode) previewDiv.parentNode.removeChild(previewDiv);
+                            addMessage('assistant', `Error: ${error.message}`, 'error');
+                        });
+                        event.preventDefault();
+                        break;
+                    }
+                }
             }
         }
 
@@ -674,6 +734,12 @@
             if (!options.headers) options.headers = {};
             options.headers['X-Access-Code'] = code;
             return fetch(url, options);
+        }
+        function showBotInfoModal() {
+            document.getElementById('botInfoModal').style.display = 'flex';
+        }
+        function hideBotInfoModal() {
+            document.getElementById('botInfoModal').style.display = 'none';
         }
     </script>
 </body>
