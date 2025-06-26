@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LongGBot Assistant</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link rel="icon" type="image/jpg" href="{{ url_for('static', filename='img/longgbot_log.jpg') }}">
+</head>
+<body>
+    <!-- Top bar for mobile -->
+    <div class="topbar-mobile" id="topbarMobile">
+        <div class="topbar-logo">
+            <i class="fas fa-robot"></i> LongGBot
+        </div>
+        <button class="burger-btn" onclick="toggleSidebar()">
+            <i class="fas fa-bars"></i>
+        </button>
+    </div>
+    <div class="container">
+        <div class="main-content">
+            <div class="sidebar" id="sidebar">
+                <div class="header">
+                    <h1><i class="fas fa-robot"></i> LongGBot</h1>
+                    <p>Advanced AI Assistant with Multiple Models</p>
+                    <button id="enterCodeBtn" class="btn" style="font-size:0.85em;padding:4px 10px;" onclick="showCodeModal()">Enter Premium Code</button>
+                    <span id="premiumIndicator" class="premium-indicator{% if premium %} active{% endif %}" style="align-items: center;">
+                        <span style="color: #2ecc40; font-weight: bold;"><i class="fas fa-crown"></i> Premium</span>
+                    </span>
+                </div>
+                <div class="section">
+                    <div class="section-title">
+                        <i class="fas fa-cog"></i> Settings
+                    </div>
+                    <div class="current-model">
+                        Current Model: <span id="currentModel">
+                            {% for model_id, model_name in chat_models %}
+                                {% if model_id == current_model %}{{ model_name }}{% endif %}
+                            {% endfor %}
+                        </span>
+                    </div>
+                    <button class="btn primary" onclick="showModelSelector('chat')">
+                        <i class="fas fa-brain"></i> Change Chat Model
+                    </button>
+                    <button class="btn primary" onclick="showModelSelector('image')">
+                        <i class="fas fa-image"></i> Change Image Model
+                    </button>
+                    <button class="btn primary" onclick="clearContext()">
+                        <i class="fas fa-trash"></i> Clear Chat History
+                    </button>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">
+                        <i class="fas fa-magic"></i> Quick Actions
+                    </div>
+                    <button class="btn" onclick="showImageUpload()">
+                        <i class="fas fa-upload"></i> Upload Image
+                    </button>
+                    <button class="btn" onclick="showImageGenerator()">
+                        <i class="fas fa-paint-brush"></i> Generate Image
+                    </button>
+                </div>
+            </div>
+
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message assistant">
+                        <div class="message-content">
+                            Hello! I'm your AI assistant. I can help you with:
+                            <br>• Chat and answer questions
+                            <br>• Generate images from text descriptions
+                            <br>• Analyze uploaded images
+                            <br><br>What would you like to do today?
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <textarea 
+                            id="messageInput" 
+                            class="chat-input" 
+                            placeholder="Type your message here..."
+                            onkeydown="handleKeyPress(event)"></textarea>
+                        <button class="send-btn" onclick="sendMessage()" id="sendBtn">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    </div> <!-- end of .container -->
+
+    <!-- Modal for Chat Model Selector -->
+    <div id="chatModelModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="section-title">Select Chat Model</div>
+            {% for model_id, model_name in chat_models %}
+            <div class="model-option" data-model-id="{{ model_id }}" onclick="modelOptionClick('{{ model_id }}', 'chat')">
+                <input type="radio" name="chatModel" value="{{ model_id }}" id="chatRadio_{{ model_id }}"> {{ model_name }}
+            </div>
+            {% endfor %}
+            <button class="btn" onclick="hideModelSelector('chat')">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Modal for Image Model Selector -->
+    <div id="imageModelModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="section-title">Select Image Model</div>
+            {% for model_id, model_name in image_models %}
+            <div class="model-option" data-model-id="{{ model_id }}" onclick="modelOptionClick('{{ model_id }}', 'image')">
+                <input type="radio" name="imageModel" value="{{ model_id }}" id="imageRadio_{{ model_id }}"> {{ model_name }}
+            </div>
+            {% endfor %}
+            <button class="btn" onclick="hideModelSelector('image')">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div id="alertModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="section-title" id="alertMessage">Alert</div>
+            <button class="btn" onclick="hideAlert()">OK</button>
+        </div>
+    </div>
+
+    <!-- Image Upload Modal -->
+    <div id="imageUploadModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="section-title">Upload Image</div>
+            <input type="file" id="imageFile" accept="image/*" class="image-upload">
+            <button class="btn" onclick="document.getElementById('imageFile').click()">
+                <i class="fas fa-folder-open"></i> Choose File
+            </button>
+            <button class="btn" onclick="uploadImage()">
+                <i class="fas fa-upload"></i> Upload
+            </button>
+            <button class="btn" onclick="hideImageUpload()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Image Generator Modal -->
+    <div id="imageGeneratorModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="section-title">Generate Image</div>
+            <textarea id="imagePrompt" placeholder="Describe the image you want to generate..." style="width: 100%; height: 80px; margin-bottom: 10px; padding: 8px; border-radius: 6px; border: 1px solid #ddd;"></textarea>
+            <button class="btn" onclick="generateImage()">
+                <i class="fas fa-magic"></i> Generate
+            </button>
+            <button class="btn" onclick="hideImageGenerator()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Premium Code Modal -->
+    <div id="codeModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="section-title">Enter Premium Code</div>
+            <input type="text" id="codeInput" placeholder="Enter code here..." style="width:100%;margin-bottom:10px;font-size:0.95em;padding:8px;" />
+            <button class="btn" onclick="submitCode()">Submit</button>
+            <button class="btn" onclick="hideCodeModal()">Cancel</button>
+            <div id="codeError" style="color:red;margin-top:8px;"></div>
+        </div>
+    </div>
+
+    <!-- Model ID to Name mapping for JS -->
+    <script id="model-names" type="application/json">{
+{% for model_id, model_name in chat_models %}    "{{ model_id }}": "{{ model_name }}"{% if not loop.last %},{% endif %}
+{% endfor %}
+}</script>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        let currentImageData = null;
+        let currentImageModel = 'imagen-4.0-ultra-generate-exp-05-20';
+        let currentChatModel = '{{ current_model }}';
+
+        const PREMIUM_MODELS = [
+            "claude-opus-4-20250514-thinking",
+            "o3-high",
+            "gemini-2.5-pro-preview-05-06",
+            "sonar-reasoning-pro",
+            "o3-mini-online",
+            "imagen-4.0-ultra-generate-exp-05-20",
+            "flux-1-kontext-max",
+            "gpt-image-1",
+            "midjourney-v7",
+            "hidream-i1-full"
+        ];
+        const FREE_MODEL = "gpt-4o-mini-search-preview-2025-03-11";
+
+        // Parse model ID to name mapping from JSON script tag
+        const MODEL_ID_TO_NAME = JSON.parse(document.getElementById('model-names').textContent);
+
+        // Move hideAllSelectors to the top to avoid reference errors
+        function hideAllSelectors() {
+            document.getElementById('chatModelModal').style.display = 'none';
+            document.getElementById('imageModelModal').style.display = 'none';
+            document.getElementById('imageUploadModal').style.display = 'none';
+            document.getElementById('imageGeneratorModal').style.display = 'none';
+        }
+
+        // On page load, load conversation history
+        window.onload = function() {
+            console.log('Page loaded, setting up event listeners...');
+            fetch('/history')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.history && Array.isArray(data.history)) {
+                        data.history.forEach(msg => {
+                            addMessage(msg.role === 'user' ? 'user' : 'assistant', msg.content);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading history:', error);
+                });
+        };
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function sendMessage() {
+            console.log('sendMessage called');
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message) return;
+            addMessage('user', message);
+            input.value = '';
+            // Insert a 'thinking...' assistant message and keep its element
+            const thinkingDiv = addMessage('assistant', '<i>thinking...</i>', 'thinking');
+            fetchWithCode('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Remove the 'thinking...' message
+                if (thinkingDiv && thinkingDiv.parentNode) thinkingDiv.parentNode.removeChild(thinkingDiv);
+                if (data.error) {
+                    addMessage('assistant', `Error: ${data.error}`, 'error');
+                } else if (data.type === 'image_request') {
+                    document.getElementById('imagePrompt').value = data.prompt;
+                    showImageGenerator();
+                } else {
+                    addMessage('assistant', data.response);
+                }
+            })
+            .catch(error => {
+                if (thinkingDiv && thinkingDiv.parentNode) thinkingDiv.parentNode.removeChild(thinkingDiv);
+                addMessage('assistant', `Error: ${error.message}`, 'error');
+            });
+        }
+
+        function markdownTableToHtml(md) {
+            // Convert markdown table to HTML table
+            // Only supports simple tables (no row/colspan, no alignment)
+            const lines = md.trim().split('\n');
+            if (lines.length < 2 || !lines[1].match(/^\|[-| ]+\|$/)) return md; // Not a table
+            let html = '<table class="md-table"><thead><tr>';
+            const headers = lines[0].split('|').slice(1, -1).map(h => h.trim());
+            headers.forEach(h => html += `<th>${h}</th>`);
+            html += '</tr></thead><tbody>';
+            for (let i = 2; i < lines.length; i++) {
+                if (!lines[i].trim().startsWith('|')) continue;
+                html += '<tr>';
+                const cells = lines[i].split('|').slice(1, -1).map(c => c.trim());
+                cells.forEach(c => html += `<td>${c}</td>`);
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
+            return html;
+        }
+
+        function extractSources(md) {
+            // Find a 'Sources:' section and build a mapping
+            const sources = {};
+            const match = md.match(/Sources?:\s*([\s\S]*)/i);
+            if (match) {
+                const lines = match[1].split(/\n|<br>/);
+                lines.forEach(line => {
+                    const m = line.match(/(\d+)\.\s*(https?:\/\/\S+)/);
+                    if (m) sources[m[1]] = m[2];
+                });
+            }
+            return sources;
+        }
+
+        function linkifyReferences(md, sources) {
+            // Replace [1], [2], ... with links if mapping exists
+            return md.replace(/\[(\d+)\]/g, (m, n) => {
+                if (sources[n]) return `<a href="${sources[n]}" target="_blank">[${n}]</a>`;
+                return m;
+            });
+        }
+
+        function addMessage(sender, content, type = 'normal', imageData = null) {
+            const messagesContainer = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            // Remove <think> blocks if present
+            let htmlContent = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
+            // Convert markdown table to HTML table if present
+            htmlContent = htmlContent.replace(/((?:\|.+\|\n)+\|.+\|)/g, m => markdownTableToHtml(m));
+            // Format markdown headings
+            htmlContent = htmlContent.replace(/^### (.*)$/gm, '<h3>$1</h3>');
+            htmlContent = htmlContent.replace(/^## (.*)$/gm, '<h2>$1</h2>');
+            // Then handle bold and line breaks
+            htmlContent = htmlContent.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+
+            // Extract sources and linkify references
+            const sources = extractSources(htmlContent);
+            htmlContent = linkifyReferences(htmlContent, sources);
+
+            let messageContent = `<div class="message-content">${htmlContent}`;
+            if (imageData) {
+                messageContent += `<img src="${imageData}" class="message-image" alt="Generated image" onload="this.parentElement.parentElement.parentElement.scrollTop = this.parentElement.parentElement.parentElement.scrollHeight;">`;
+            }
+            messageContent += '</div>';
+            if (type === 'error') {
+                messageContent = `<div class="message-content error">${htmlContent}</div>`;
+            }
+            if (type === 'thinking') {
+                messageContent = `<div class="message-content"><i>thinking...</i></div>`;
+            }
+            if (type === 'generating') {
+                messageContent = `<div class="message-content"><i>Generating image...</i></div>`;
+            }
+            messageDiv.innerHTML = messageContent;
+            messagesContainer.appendChild(messageDiv);
+            // Auto-scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            // If there's an image, scroll again after it loads (handled by onload above)
+            return messageDiv;
+        }
+
+        function showModelSelector(type) {
+            hideAllSelectors();
+            if (type === 'chat') {
+                document.getElementById('chatModelModal').style.display = 'flex';
+                // Highlight and check the current chat model only
+                setTimeout(() => {
+                    for (const el of document.getElementsByName('chatModel')) {
+                        if (el.value === currentChatModel) {
+                            el.checked = true;
+                            el.parentElement.classList.add('selected');
+                        } else {
+                            el.checked = false;
+                            el.parentElement.classList.remove('selected');
+                        }
+                    }
+                }, 0);
+            } else if (type === 'image') {
+                document.getElementById('imageModelModal').style.display = 'flex';
+                // Highlight and check the current image model only
+                setTimeout(() => {
+                    for (const el of document.getElementsByName('imageModel')) {
+                        if (el.value === currentImageModel) {
+                            el.checked = true;
+                            el.parentElement.classList.add('selected');
+                        } else {
+                            el.checked = false;
+                            el.parentElement.classList.remove('selected');
+                        }
+                    }
+                }, 0);
+            }
+        }
+
+        function hideModelSelector(type) {
+            console.log('hideModelSelector called with type:', type);
+            if (type === 'chat') {
+                document.getElementById('chatModelModal').style.display = 'none';
+            } else {
+                document.getElementById('imageModelModal').style.display = 'none';
+            }
+        }
+
+        function selectModel(modelId, type) {
+            if (type === 'chat') {
+                currentChatModel = modelId;
+                document.getElementById('currentModel').textContent = MODEL_ID_TO_NAME[modelId] || modelId;
+                // Update chat model UI only
+                for (const el of document.getElementsByName('chatModel')) {
+                    if (el.value === modelId) {
+                        el.checked = true;
+                        el.parentElement.classList.add('selected');
+                    } else {
+                        el.checked = false;
+                        el.parentElement.classList.remove('selected');
+                    }
+                }
+            } else if (type === 'image') {
+                currentImageModel = modelId;
+                // Update image model UI only
+                for (const el of document.getElementsByName('imageModel')) {
+                    if (el.value === modelId) {
+                        el.checked = true;
+                        el.parentElement.classList.add('selected');
+                    } else {
+                        el.checked = false;
+                        el.parentElement.classList.remove('selected');
+                    }
+                }
+            }
+            fetchWithCode('/set_model', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: modelId, model_type: type })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    hideModelSelector(type);
+                    addMessage('assistant', 'Model changed successfully!', 'success');
+                } else {
+                    addMessage('assistant', `Error: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                addMessage('assistant', `Error: ${error.message}`, 'error');
+            });
+        }
+
+        function clearContext() {
+            console.log('clearContext called');
+            if (confirm('Are you sure you want to clear the chat history?')) {
+                fetch('/clear_context', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('chatMessages').innerHTML = `
+                            <div class="message assistant">
+                                <div class="message-content">
+                                    Chat history cleared! How can I help you today?
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        addMessage('assistant', `Error: ${data.error}`, 'error');
+                    }
+                })
+                .catch(error => {
+                    addMessage('assistant', `Error: ${error.message}`, 'error');
+                });
+            }
+        }
+
+        function showImageUpload() {
+            hideAllSelectors();
+            document.getElementById('imageUploadModal').style.display = 'flex';
+        }
+
+        function hideImageUpload() {
+            console.log('hideImageUpload called');
+            document.getElementById('imageUploadModal').style.display = 'none';
+        }
+
+        function uploadImage() {
+            console.log('uploadImage called');
+            const fileInput = document.getElementById('imageFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showAlert('Please select a file first');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            fetch('/upload_image', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentImageData = data.image;
+                    addMessage('user', 'Image uploaded successfully!');
+                    addMessage('assistant', 'Image uploaded! You can now ask me to analyze it or use it for editing.');
+                    hideImageUpload();
+                } else {
+                    addMessage('assistant', `Error: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                addMessage('assistant', `Error: ${error.message}`, 'error');
+            });
+        }
+
+        function showImageGenerator() {
+            hideAllSelectors();
+            document.getElementById('imageGeneratorModal').style.display = 'flex';
+        }
+
+        function hideImageGenerator() {
+            console.log('hideImageGenerator called');
+            document.getElementById('imageGeneratorModal').style.display = 'none';
+        }
+
+        function generateImage() {
+            const prompt = document.getElementById('imagePrompt').value.trim();
+            if (!prompt) {
+                showAlert('Please enter a prompt');
+                return;
+            }
+            hideImageGenerator(); // Close the modal immediately
+            // Show 'Generating image...' message
+            addMessage('user', `Generate image: ${prompt}`);
+            const thinkingDiv = addMessage('assistant', '<i>Generating image...</i>', 'generating');
+            fetch('/generate_image', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    prompt: prompt,
+                    model: currentImageModel
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Remove the 'Generating image...' message
+                if (thinkingDiv && thinkingDiv.parentNode) thinkingDiv.parentNode.removeChild(thinkingDiv);
+                if (data.error) {
+                    addMessage('assistant', `Error: ${data.error}`, 'error');
+                } else {
+                    let imageMsg = 'Generated image:';
+                    if (data.image_url) {
+                        imageMsg += `<br><a href="${data.image_url}" target="_blank">View Image URL</a>`;
+                    }
+                    addMessage('assistant', imageMsg, 'normal', data.image);
+                }
+            })
+            .catch(error => {
+                if (thinkingDiv && thinkingDiv.parentNode) thinkingDiv.parentNode.removeChild(thinkingDiv);
+                addMessage('assistant', `Error: ${error.message}`, 'error');
+            });
+        }
+
+        function testClick() {
+            console.log('testClick called');
+            alert('Test click works! If you see this, clicking is working.');
+            addMessage('assistant', 'Test click successful! Clicking is working properly.');
+        }
+
+        function showAlert(message) {
+            document.getElementById('alertMessage').textContent = message;
+            document.getElementById('alertModal').style.display = 'flex';
+        }
+
+        function hideAlert() {
+            document.getElementById('alertModal').style.display = 'none';
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('open');
+        }
+
+        function getPremiumCode() {
+            return localStorage.getItem('premium_code') || '';
+        }
+        function hasPremiumAccess() {
+            return localStorage.getItem('premium_code_valid') === 'true';
+        }
+        function showCodeModal(errorMsg = '') {
+            document.getElementById('codeModal').style.display = 'flex';
+            document.getElementById('codeError').textContent = errorMsg || '';
+            document.getElementById('codeInput').value = getPremiumCode();
+        }
+        function hideCodeModal() {
+            document.getElementById('codeModal').style.display = 'none';
+        }
+        function submitCode() {
+            const code = document.getElementById('codeInput').value.trim();
+            // Validate code with backend
+            fetch('/validate_code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code })
+            })
+            .then(res => res.json().then(data => ({ status: res.status, data })))
+            .then(({ status, data }) => {
+                if (status === 200 && data.valid) {
+                    localStorage.setItem('premium_code', code);
+                    localStorage.setItem('premium_code_valid', 'true');
+                    hideCodeModal();
+                    window.location.reload();
+                } else {
+                    localStorage.setItem('premium_code', '');
+                    localStorage.setItem('premium_code_valid', 'false');
+                    document.getElementById('codeError').textContent = 'Invalid code!';
+                    updateModelSelectors();
+                }
+            });
+            updatePremiumIndicator();
+        }
+        function updateModelSelectors() {
+            // Chat models
+            document.querySelectorAll('.model-option').forEach(opt => {
+                const val = opt.getAttribute('data-model-id');
+                // Add Free label to the free model
+                if (val === FREE_MODEL) {
+                    if (!opt.querySelector('.free-label')) {
+                        const label = document.createElement('span');
+                        label.className = 'free-label';
+                        label.textContent = 'Free';
+                        opt.appendChild(label);
+                    }
+                } else {
+                    const label = opt.querySelector('.free-label');
+                    if (label) label.remove();
+                }
+                if (PREMIUM_MODELS.includes(val) && val !== FREE_MODEL) {
+                    if (!hasPremiumAccess()) {
+                        opt.classList.add('premium-disabled');
+                        if (!opt.querySelector('.premium-label')) {
+                            const label = document.createElement('span');
+                            label.className = 'premium-label';
+                            label.textContent = 'Premium';
+                            opt.appendChild(label);
+                        }
+                    } else {
+                        opt.classList.remove('premium-disabled');
+                        const label = opt.querySelector('.premium-label');
+                        if (label) label.remove();
+                    }
+                } else {
+                    opt.classList.remove('premium-disabled');
+                    const label = opt.querySelector('.premium-label');
+                    if (label) label.remove();
+                }
+            });
+        }
+        window.addEventListener('DOMContentLoaded', updateModelSelectors);
+
+        // Patch model selector click logic
+        function modelOptionClick(modelId, type) {
+            if (PREMIUM_MODELS.includes(modelId) && modelId !== FREE_MODEL && !hasPremiumAccess()) {
+                showCodeModal('Enter a valid premium code to use this model.');
+                return;
+            }
+            selectModel(modelId, type);
+        }
+
+        function updatePremiumIndicator() {
+            const indicator = document.getElementById('premiumIndicator');
+            if (hasPremiumAccess()) {
+                indicator.classList.add('active');
+            } else {
+                indicator.classList.remove('active');
+            }
+        }
+        window.addEventListener('DOMContentLoaded', updatePremiumIndicator);
+
+        function fetchWithCode(url, options = {}) {
+            const code = getPremiumCode();
+            if (!options.headers) options.headers = {};
+            options.headers['X-Access-Code'] = code;
+            return fetch(url, options);
+        }
+    </script>
+</body>
+</html> 
