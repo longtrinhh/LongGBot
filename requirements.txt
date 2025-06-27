@@ -1,5 +1,5 @@
-flask==2.3.3
-aiohttp==3.8.6
+flask
+aiohttp
 asyncio
-Pillow==10.0.1
-requests==2.31.0 
+Pillow
+requests

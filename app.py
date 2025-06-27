@@ -70,15 +70,21 @@ def chat():
     try:
         data = request.get_json()
         message = data.get('message', '').strip()
+        image_data = data.get('image', '')  # Get uploaded image data
         user_id = get_user_id()
+        
         if not message:
             return jsonify({'error': 'Message cannot be empty'}), 400
+            
         # Only allow premium models if user has premium access
         if has_premium_access():
             model = get_user_model(user_id, 'chat') or 'claude-opus-4-20250514-thinking'
         else:
             model = 'gpt-4o-mini-search-preview-2025-03-11'
+            
         context = get_user_context(user_id)
+        
+        # Check if this is an image generation request
         image_keywords = [
             "generate image", "tạo ảnh", "tạo tranh", "tạo logo", "gen image", 
             "gen pic", "gen photo", "gen logo", "create image", "create pic", 
@@ -89,8 +95,23 @@ def chat():
             if not has_premium_access():
                 return jsonify({'error': 'Image generation is only available for premium users.'}), 403
             return jsonify({'type': 'image_request', 'prompt': message})
-        response = run_async(ask_ai(message, model, context))
+        
+        # Convert base64 image data to bytes if present
+        image_bytes = None
+        if image_data:
+            try:
+                # Remove data URL prefix if present
+                if image_data.startswith('data:image/'):
+                    image_data = image_data.split(',')[1]
+                image_bytes = base64.b64decode(image_data)
+            except Exception as e:
+                logger.error(f"Error decoding image data: {e}")
+                return jsonify({'error': 'Invalid image data'}), 400
+        
+        # Call AI with image data if present
+        response = run_async(ask_ai(message, model, context, image_bytes))
         add_question_to_context(user_id, message, response)
+        
         return jsonify({
             'type': 'chat',
             'response': response,
