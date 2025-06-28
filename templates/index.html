@@ -533,14 +533,21 @@
 
         // Enhanced scroll to bottom with smooth animation
         function smoothScrollToBottom(container) {
-            const scrollHeight = container.scrollHeight;
-            const clientHeight = container.clientHeight;
-            const maxScrollTop = scrollHeight - clientHeight;
-            
-            container.scrollTo({
-                top: maxScrollTop,
-                behavior: 'smooth'
-            });
+            // Add a small delay to ensure DOM updates are complete
+            setTimeout(() => {
+                const scrollHeight = container.scrollHeight;
+                const clientHeight = container.clientHeight;
+                const maxScrollTop = scrollHeight - clientHeight;
+                
+                // On mobile, add extra padding to ensure last message is visible
+                const isMobile = window.innerWidth <= 700;
+                const extraPadding = isMobile ? 20 : 0;
+                
+                container.scrollTo({
+                    top: maxScrollTop + extraPadding,
+                    behavior: 'smooth'
+                });
+            }, 50);
         }
 
         // Add micro-interactions

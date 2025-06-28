@@ -1025,6 +1025,8 @@ body::before {
         padding-top: calc(var(--topbar-height) + var(--safe-area-top)) !important;
         margin-left: calc(-1 * env(safe-area-inset-left, 0px)) !important;
         margin-right: calc(-1 * env(safe-area-inset-right, 0px)) !important;
+        /* Ensure proper spacing for input bar */
+        padding-bottom: 0 !important;
     }
     .chat-messages {
         flex: 1 1 auto !important;
@@ -1034,13 +1036,16 @@ body::before {
         /* Use dynamic height calculation to account for all UI elements */
         height: calc(100dvh - var(--inputbar-height) - var(--topbar-height) - var(--safe-area-top) - var(--safe-area-bottom)) !important;
         max-height: calc(100dvh - var(--inputbar-height) - var(--topbar-height) - var(--safe-area-top) - var(--safe-area-bottom)) !important;
-        padding: 0 0 2svh 0 !important;
+        padding: 0 0 calc(var(--inputbar-height) + 20px) 0 !important;
         margin: 0 !important;
         box-sizing: border-box !important;
         background: transparent !important;
         /* Ensure proper positioning */
         position: relative !important;
         top: 0 !important;
+        /* Add smooth scrolling to chat messages */
+        scroll-behavior: smooth !important;
+        scroll-padding-bottom: calc(var(--inputbar-height) + 10px) !important;
     }
     .chat-input-container {
         display: flex !important;
@@ -1083,6 +1088,22 @@ body::before {
         background: #fff !important;
         margin-bottom: 1.5svh !important;
     }
+    
+    /* Ensure last message is always visible but with minimal gap */
+    .message:last-child {
+        margin-bottom: 8px !important;
+    }
+    
+    /* Add extra spacing for the last message content */
+    .message:last-child .message-content {
+        margin-bottom: 0 !important;
+    }
+    
+    /* Add smooth scrolling to chat messages */
+    .chat-messages {
+        scroll-behavior: smooth !important;
+        scroll-padding-bottom: 12px !important;
+    }
     .message-image {
         max-width: 90vw !important;
         max-height: 28svh !important;
@@ -1110,7 +1131,7 @@ body::before {
     /* Mobile-specific image indicator positioning */
     #imageIndicator {
         position: fixed !important;
-        bottom: calc(var(--inputbar-height) + var(--safe-area-bottom) + 16px) !important;
+        bottom: calc(var(--inputbar-height) + var(--safe-area-bottom) + 20px) !important;
         right: calc(4vw + env(safe-area-inset-right, 0px)) !important;
         z-index: 1500 !important;
         max-width: 80vw !important;
