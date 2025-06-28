@@ -59,64 +59,55 @@ def save_data():
     except Exception as e:
         logger.error(f"Error saving user models: {e}")
 
-def get_user_context(user_id: str) -> List[Dict]:
-    """Get conversation context for a user."""
-    return user_contexts.get(str(user_id), [])
+def get_user_context(user_key: str) -> List[Dict]:
+    """Get conversation context for a user (by code or user_id)."""
+    return user_contexts.get(str(user_key), [])
 
-def add_question_to_context(user_id: str, question: str, answer: str, has_image: bool = False):
-    """Add a question-answer pair to user's conversation context."""
-    user_id_str = str(user_id)
-    if user_id_str not in user_contexts:
-        user_contexts[user_id_str] = []
-    
-    # Add user message
-    user_contexts[user_id_str].append({
+def add_question_to_context(user_key: str, question: str, answer: str, has_image: bool = False):
+    """Add a question-answer pair to user's conversation context (by code or user_id)."""
+    user_key_str = str(user_key)
+    if user_key_str not in user_contexts:
+        user_contexts[user_key_str] = []
+    user_contexts[user_key_str].append({
         "role": "user",
         "content": question
     })
-    
-    # Remove <think> blocks from answer before saving
     answer_clean = remove_think_block(answer)
-    
-    # Add assistant response
-    user_contexts[user_id_str].append({
+    user_contexts[user_key_str].append({
         "role": "assistant",
         "content": answer_clean
     })
-    
-    # Keep only last 20 messages (10 Q&A pairs) to prevent context from getting too long
-    if len(user_contexts[user_id_str]) > 20:
-        user_contexts[user_id_str] = user_contexts[user_id_str][-20:]
-    
+    if len(user_contexts[user_key_str]) > 20:
+        user_contexts[user_key_str] = user_contexts[user_key_str][-20:]
     save_data()
 
-def clear_user_context(user_id: str):
-    """Clear conversation context for a user."""
-    user_id_str = str(user_id)
-    if user_id_str in user_contexts:
-        del user_contexts[user_id_str]
+def clear_user_context(user_key: str):
+    """Clear conversation context for a user (by code or user_id)."""
+    user_key_str = str(user_key)
+    if user_key_str in user_contexts:
+        del user_contexts[user_key_str]
         save_data()
 
-def get_user_model(user_id: str, model_type: str = 'chat') -> Optional[str]:
-    """Get the preferred chat or image model for a user."""
-    user_entry = user_models.get(str(user_id), {})
+def get_user_model(user_key: str, model_type: str = 'chat') -> Optional[str]:
+    """Get the preferred chat or image model for a user (by code or user_id)."""
+    user_entry = user_models.get(str(user_key), {})
     return user_entry.get(model_type)
 
-def set_user_model(user_id: str, model_type: str, model: str):
-    """Set the preferred chat or image model for a user."""
-    user_id_str = str(user_id)
-    if user_id_str not in user_models or not isinstance(user_models[user_id_str], dict):
-        user_models[user_id_str] = {}
-    user_models[user_id_str][model_type] = model
+def set_user_model(user_key: str, model_type: str, model: str):
+    """Set the preferred chat or image model for a user (by code or user_id)."""
+    user_key_str = str(user_key)
+    if user_key_str not in user_models or not isinstance(user_models[user_key_str], dict):
+        user_models[user_key_str] = {}
+    user_models[user_key_str][model_type] = model
     save_data()
 
 def remove_think_block(text):
     import re
     return re.sub(r'<think>[\s\S]*?</think>', '', text, flags=re.IGNORECASE)
 
-def get_full_conversation(user_id: str) -> List[Dict]:
-    """Return the full conversation history for a user (for frontend reload)."""
-    return user_contexts.get(str(user_id), [])
+def get_full_conversation(user_key: str) -> List[Dict]:
+    """Return the full conversation history for a user (by code or user_id)."""
+    return user_contexts.get(str(user_key), [])
 
 # Load data when module is imported
 load_data() 

@@ -9,6 +9,7 @@ from shared_context import get_user_context, add_question_to_context, clear_user
 from config import CHAT_MODELS, IMAGE_GEN_MODELS, MODEL_NAME, FLASK_SECRET_KEY
 import uuid
 import os
+import hashlib
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY  # Secure secret key
@@ -29,8 +30,24 @@ def load_valid_codes():
 
 VALID_CODES = load_valid_codes()
 
-def get_user_id():
-    return request.cookies.get('user_id')
+def hash_code(code):
+    return hashlib.sha256(code.encode('utf-8')).hexdigest()
+
+def get_premium_code_hash():
+    # Try to get hash from cookie, header, or request
+    code_hash = request.cookies.get('premium_code_hash')
+    if not code_hash:
+        # If code is sent directly, hash it
+        code = request.headers.get('X-Access-Code') or request.args.get('code') or (request.json.get('code') if request.is_json and request.json else None)
+        if code and code in VALID_CODES:
+            code_hash = hash_code(code)
+    return code_hash
+
+def get_user_key():
+    code_hash = get_premium_code_hash()
+    if code_hash and code_hash in [hash_code(c) for c in VALID_CODES]:
+        return code_hash  # Use hash as key for premium users
+    return request.cookies.get('user_id')  # Use user_id for free users
 
 def run_async(coro):
     return asyncio.run(coro)
@@ -43,27 +60,36 @@ def has_premium_access():
 @app.route('/')
 def index():
     user_id = request.cookies.get('user_id')
+    code_hash = get_premium_code_hash()
     if not user_id:
         user_id = str(uuid.uuid4())
-    premium = has_premium_access()
+    premium = code_hash and code_hash in [hash_code(c) for c in VALID_CODES]
+    user_key = code_hash if premium else user_id
     resp = make_response(render_template(
         'index.html',
         chat_models=CHAT_MODELS,
         image_models=IMAGE_GEN_MODELS,
-        current_model=get_user_model(user_id, 'chat') or 'gpt-4o-mini-search-preview-2025-03-11',
+        current_model=get_user_model(user_key, 'chat') or 'gpt-4o-mini-search-preview-2025-03-11',
         premium=premium
     ))
     if not request.cookies.get('user_id'):
         resp.set_cookie('user_id', user_id, max_age=60*60*24*365)  # 1 year
+    if code_hash:
+        resp.set_cookie('premium_code_hash', code_hash, max_age=60*60*24*365)
     return resp
 
 @app.route('/validate_code', methods=['POST'])
 def validate_code():
     code = request.json.get('code', '')
+    code_hash = hash_code(code)
     if code in VALID_CODES:
-        return jsonify({'valid': True})
+        resp = jsonify({'valid': True})
+        resp.set_cookie('premium_code_hash', code_hash, max_age=60*60*24*365)
+        return resp
     else:
-        return jsonify({'valid': False}), 403
+        resp = jsonify({'valid': False})
+        resp.set_cookie('premium_code_hash', '', expires=0)
+        return resp, 403
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -71,18 +97,15 @@ def chat():
         data = request.get_json()
         message = data.get('message', '').strip()
         image_data = data.get('image', '')  # Get uploaded image data
-        user_id = get_user_id()
-        
+        user_key = get_user_key()
+        premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
         if not message:
             return jsonify({'error': 'Message cannot be empty'}), 400
-            
-        # Only allow premium models if user has premium access
-        if has_premium_access():
-            model = get_user_model(user_id, 'chat') or 'claude-opus-4-20250514-thinking'
+        if premium:
+            model = get_user_model(user_key, 'chat') or 'claude-opus-4-20250514-thinking'
         else:
             model = 'gpt-4o-mini-search-preview-2025-03-11'
-            
-        context = get_user_context(user_id)
+        context = get_user_context(user_key)
         
         # Check if this is an image generation request
         image_keywords = [
@@ -92,7 +115,7 @@ def chat():
         ]
         is_image_request = any(keyword in message.lower() for keyword in image_keywords)
         if is_image_request:
-            if not has_premium_access():
+            if not premium:
                 return jsonify({'error': 'Image generation is only available for premium users.'}), 403
             return jsonify({'type': 'image_request', 'prompt': message})
         
@@ -110,7 +133,7 @@ def chat():
         
         # Call AI with image data if present
         response = run_async(ask_ai(message, model, context, image_bytes))
-        add_question_to_context(user_id, message, response)
+        add_question_to_context(user_key, message, response)
         
         return jsonify({
             'type': 'chat',
@@ -123,13 +146,14 @@ def chat():
 
 @app.route('/generate_image', methods=['POST'])
 def generate_image():
-    if not has_premium_access():
+    user_key = get_user_key()
+    premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
+    if not premium:
         return jsonify({'error': 'Image generation is only available for premium users.'}), 403
     try:
         data = request.get_json()
         prompt = data.get('prompt', '').strip()
-        user_id = get_user_id()
-        model = data.get('model') or get_user_model(user_id, 'image') or (IMAGE_GEN_MODELS[0][0] if IMAGE_GEN_MODELS else None)
+        model = data.get('model') or get_user_model(user_key, 'image') or (IMAGE_GEN_MODELS[0][0] if IMAGE_GEN_MODELS else None)
         if not prompt:
             return jsonify({'error': 'Prompt cannot be empty'}), 400
         image_data, image_url = run_async(image_client.generate_image(prompt, model, return_url=True))
@@ -149,14 +173,15 @@ def generate_image():
 
 @app.route('/edit_image', methods=['POST'])
 def edit_image():
-    if not has_premium_access():
+    user_key = get_user_key()
+    premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
+    if not premium:
         return jsonify({'error': 'Image editing is only available for premium users.'}), 403
     try:
         data = request.get_json()
         prompt = data.get('prompt', '').strip()
         image_data = data.get('image', '')
-        user_id = get_user_id()
-        model = data.get('model') or get_user_model(user_id, 'image') or (IMAGE_GEN_MODELS[0][0] if IMAGE_GEN_MODELS else None)
+        model = data.get('model') or get_user_model(user_key, 'image') or (IMAGE_GEN_MODELS[0][0] if IMAGE_GEN_MODELS else None)
         if not prompt or not image_data:
             return jsonify({'error': 'Prompt and image are required'}), 400
         try:
@@ -183,16 +208,17 @@ def set_model():
         data = request.get_json()
         model = data.get('model', '')
         model_type = data.get('model_type', 'chat')
-        user_id = get_user_id()
+        user_key = get_user_key()
+        premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
         if model_type == 'chat':
-            if not has_premium_access() and model != "gpt-4o-mini-search-preview-2025-03-11":
+            if not premium and model != "gpt-4o-mini-search-preview-2025-03-11":
                 return jsonify({'error': 'This model is only available for premium users.'}), 403
         if model_type == 'image':
-            if not has_premium_access():
+            if not premium:
                 return jsonify({'error': 'Image models are only available for premium users.'}), 403
         if not model:
             return jsonify({'error': 'Model cannot be empty'}), 400
-        set_user_model(user_id, model_type, model)
+        set_user_model(user_key, model_type, model)
         return jsonify({'success': True, 'model': model, 'model_type': model_type})
     except Exception as e:
         logger.error(f"Error setting model: {e}")
@@ -201,8 +227,8 @@ def set_model():
 @app.route('/clear_context', methods=['POST'])
 def clear_context():
     try:
-        user_id = get_user_id()
-        clear_user_context(user_id)
+        user_key = get_user_key()
+        clear_user_context(user_key)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error clearing context: {e}")
@@ -228,8 +254,8 @@ def upload_image():
 
 @app.route('/history', methods=['GET'])
 def get_history():
-    user_id = get_user_id()
-    history = get_full_conversation(user_id)
+    user_key = get_user_key()
+    history = get_full_conversation(user_key)
     return jsonify({'history': history})
 
 if __name__ == '__main__':

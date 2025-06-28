@@ -907,18 +907,37 @@ body::before {
 
 @media (max-width: 700px) {
     html, body {
-        height: 100vh !important;
-        max-height: 100vh !important;
-        overflow: hidden !important;
-        position: relative !important;
+        overflow-x: hidden !important;
         margin: 0 !important;
         padding: 0 !important;
+        width: 100% !important;
         box-sizing: border-box !important;
-        /* Use viewport units that adapt to keyboard */
-        height: 100vh !important;
-        min-height: 100vh !important;
     }
-    
+    .container {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .main-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .chat-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .chat-messages {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 0 12px 0 !important;
+        box-sizing: border-box !important;
+    }
     body {
         font-family: Arial, sans-serif;
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
