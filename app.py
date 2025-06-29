@@ -10,6 +10,7 @@ from config import CHAT_MODELS, IMAGE_GEN_MODELS, MODEL_NAME, FLASK_SECRET_KEY
 import uuid
 import os
 import hashlib
+from PIL import Image
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY  # Secure secret key
@@ -242,6 +243,30 @@ def upload_image():
         file = request.files['image']
         if file.filename == '':
             return jsonify({'error': 'No image file selected'}), 400
+        
+        # Validate file type - only accept image files
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
+        file_extension = os.path.splitext(file.filename.lower())[1]
+        if file_extension not in allowed_extensions:
+            return jsonify({'error': 'Only image files are allowed. Please upload a JPEG, PNG, GIF, WebP, or BMP file.'}), 400
+        
+        # Validate file size (max 10MB)
+        max_size = 10 * 1024 * 1024  # 10MB
+        file.seek(0, 2)  # Seek to end
+        file_size = file.tell()
+        file.seek(0)  # Reset to beginning
+        
+        if file_size > max_size:
+            return jsonify({'error': 'File size too large. Please upload an image smaller than 10MB.'}), 400
+        
+        # Additional validation: check if it's actually an image by reading first few bytes
+        try:
+            image = Image.open(file)
+            image.verify()  # Verify it's a valid image
+            file.seek(0)  # Reset to beginning after verification
+        except Exception:
+            return jsonify({'error': 'Invalid image file. Please upload a valid image.'}), 400
+        
         image_data = file.read()
         image_base64 = base64.b64encode(image_data).decode('utf-8')
         return jsonify({

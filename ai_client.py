@@ -74,7 +74,7 @@ async def ask_ai(question: str, model: str = MODEL_NAME, context=None, image_dat
         "messages": messages,
         "max_tokens": 10000,
         "temperature": 0.7,
-        "system": "You are a helpful AI assistant. You can think through problems step by step and provide detailed, accurate responses. You can also analyze images and answer questions about them."
+        "system": "You are a helpful AI assistant. Use proper markdown formatting in your responses including headers (##, ###), bold (**text**), italic (*text*), code blocks (```), inline code (`code`), lists (- or 1.), and tables when appropriate. You can think through problems step by step and provide detailed, accurate responses. You can also analyze images and answer questions about them."
     }
     
     headers = {
@@ -94,7 +94,7 @@ async def ask_ai(question: str, model: str = MODEL_NAME, context=None, image_dat
                     result = await response.json()
                     if result.get("choices") and len(result["choices"]) > 0:
                         answer = result["choices"][0]["message"]["content"]
-                        # Always remove <think> blocks before saving or returning
+                        # Only remove <think> blocks, preserve all other markdown formatting
                         answer_clean = remove_think_block(answer)
                         return answer_clean
                     else:

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
     <title>LongGBot Assistant</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ range(1, 1000) | random }}" rel="stylesheet">
     <link rel="icon" type="image/jpg" href="{{ url_for('static', filename='img/longgbot_log.jpg') }}">
 </head>
 <body>
@@ -336,6 +336,20 @@
                 if (items[i].type.indexOf('image') !== -1) {
                     const file = items[i].getAsFile();
                     if (file) {
+                        // Validate file type - only accept image files
+                        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+                        if (!allowedTypes.includes(file.type)) {
+                            showAlert('Only image files can be pasted. Please paste a JPEG, PNG, GIF, WebP, or BMP image.');
+                            return;
+                        }
+                        
+                        // Validate file size (max 10MB)
+                        const maxSize = 10 * 1024 * 1024; // 10MB
+                        if (file.size > maxSize) {
+                            showAlert('Image file too large. Please paste an image smaller than 10MB.');
+                            return;
+                        }
+                        
                         // Show preview (optional)
                         const reader = new FileReader();
                         let previewDiv = null;
@@ -450,30 +464,11 @@
         }
 
         function createThinkingIndicator() {
-            return `
-                <div class="thinking-indicator">
-                    <span>thinking</span>
-                    <div class="thinking-dots">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-                </div>
-            `;
+            return `**thinking**...`;
         }
 
         function createGeneratingIndicator() {
-            return `
-                <div class="generating-indicator">
-                    <div class="generating-spinner"></div>
-                    <span>Generating image</span>
-                    <div class="thinking-dots">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-                </div>
-            `;
+            return `**Generating image**...`;
         }
 
         function createTypingIndicator() {
@@ -535,18 +530,18 @@
         function smoothScrollToBottom(container) {
             // Add a small delay to ensure DOM updates are complete
             setTimeout(() => {
-                const scrollHeight = container.scrollHeight;
-                const clientHeight = container.clientHeight;
-                const maxScrollTop = scrollHeight - clientHeight;
+            const scrollHeight = container.scrollHeight;
+            const clientHeight = container.clientHeight;
+            const maxScrollTop = scrollHeight - clientHeight;
                 
                 // On mobile, add extra padding to ensure last message is visible
                 const isMobile = window.innerWidth <= 700;
                 const extraPadding = isMobile ? 20 : 0;
-                
-                container.scrollTo({
+            
+            container.scrollTo({
                     top: maxScrollTop + extraPadding,
-                    behavior: 'smooth'
-                });
+                behavior: 'smooth'
+            });
             }, 50);
         }
 
@@ -593,53 +588,76 @@
             document.head.appendChild(rippleStyle);
         }
 
-        // Enhanced addMessage function with better animations
+        // Enhanced addMessage function with proper markdown rendering
         function addMessage(sender, content, type = 'normal', imageData = null) {
             const messagesContainer = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}`;
             
-            // Remove <think> blocks if present
-            let htmlContent = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
-            
-            // Convert markdown table to HTML table if present
-            htmlContent = htmlContent.replace(/((?:\|.+\|\n)+\|.+\|)/g, m => markdownTableToHtml(m));
-            
-            // Format markdown headings
-            htmlContent = htmlContent.replace(/^### (.*)$/gm, '<h3>$1</h3>');
-            htmlContent = htmlContent.replace(/^## (.*)$/gm, '<h2>$1</h2>');
-            
-            // Then handle bold and line breaks
-            htmlContent = htmlContent.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
-
-            // Remove leading <br> and whitespace
-            htmlContent = htmlContent.replace(/^(<br\s*\/?>|\s)+/i, '');
-
-            // Extract sources and linkify references
-            const sources = extractSources(htmlContent);
-            htmlContent = linkifyReferences(htmlContent, sources);
-
             let messageContent = '';
-            if (imageData) {
-                // Show image above the text
-                messageContent = `<div class="message-content">` +
-                    `<img src="${imageData}" class="message-image" alt="Generated image" style="display:block;margin-bottom:10px;max-width:100%;border-radius:8px;" onload="this.parentElement.parentElement.parentElement.scrollTop = this.parentElement.parentElement.parentElement.scrollHeight;">` +
-                    `${htmlContent}</div>`;
-            } else {
-                messageContent = `<div class="message-content">${htmlContent}</div>`;
-            }
             
-            if (type === 'error') {
-                messageContent = `<div class="message-content error">${htmlContent}</div>`;
-            }
-            if (type === 'success') {
-                messageContent = `<div class="message-content success">${htmlContent}</div>`;
-            }
-            if (type === 'thinking') {
-                messageContent = `<div class="message-content">${htmlContent}</div>`;
-            }
-            if (type === 'generating') {
-                messageContent = `<div class="message-content">${htmlContent}</div>`;
+            if (sender === 'assistant' && type !== 'error' && type !== 'success') {
+                // Use proper markdown rendering for assistant messages
+                let htmlContent = content;
+                
+                // Remove <think> blocks if present
+                htmlContent = htmlContent.replace(/<think>[\s\S]*?<\/think>/gi, '');
+                
+                // Use marked library to render markdown
+                htmlContent = marked.parse(htmlContent);
+                
+                // Extract sources and linkify references (keep this for compatibility)
+                const sources = extractSources(htmlContent);
+                htmlContent = linkifyReferences(htmlContent, sources);
+                
+                if (imageData) {
+                    // Show image above the text
+                    messageContent = `<div class="message-content">` +
+                        `<img src="${imageData}" class="message-image" alt="Generated image" style="display:block;margin-bottom:10px;max-width:100%;border-radius:8px;" onload="this.parentElement.parentElement.parentElement.scrollTop = this.parentElement.parentElement.parentElement.scrollHeight;">` +
+                        `${htmlContent}</div>`;
+                } else {
+                    messageContent = `<div class="message-content">${htmlContent}</div>`;
+                }
+            } else if (sender === 'user') {
+                // Display user messages as plain text only
+                let plainText = content;
+                
+                // Remove <think> blocks if present
+                plainText = plainText.replace(/<think>[\s\S]*?<\/think>/gi, '');
+                
+                // Escape HTML to display as plain text
+                plainText = plainText
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+                
+                // Convert line breaks to <br> for display
+                plainText = plainText.replace(/\n/g, '<br>');
+                
+                messageContent = `<div class="message-content">${plainText}</div>`;
+            } else {
+                // For system messages (error, success, thinking, generating), keep basic formatting
+                let htmlContent = content;
+                
+                // Remove <think> blocks if present
+                htmlContent = htmlContent.replace(/<think>[\s\S]*?<\/think>/gi, '');
+                
+                // Basic formatting for system messages (just line breaks and basic bold)
+                htmlContent = htmlContent.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+                
+                if (type === 'error') {
+                    messageContent = `<div class="message-content error">${htmlContent}</div>`;
+                } else if (type === 'success') {
+                    messageContent = `<div class="message-content success">${htmlContent}</div>`;
+                } else if (type === 'thinking') {
+                    messageContent = `<div class="message-content">${htmlContent}</div>`;
+                } else if (type === 'generating') {
+                    messageContent = `<div class="message-content">${htmlContent}</div>`;
+                } else {
+                    messageContent = `<div class="message-content">${htmlContent}</div>`;
+                }
             }
             
             messageDiv.innerHTML = messageContent;
@@ -858,6 +876,22 @@
             
             if (!file) {
                 showAlert('Please select a file first');
+                return;
+            }
+            
+            // Validate file type - only accept image files
+            const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+            if (!allowedTypes.includes(file.type)) {
+                showAlert('Only image files are allowed. Please select a JPEG, PNG, GIF, WebP, or BMP file.');
+                fileInput.value = '';
+                return;
+            }
+            
+            // Validate file size (max 10MB)
+            const maxSize = 10 * 1024 * 1024; // 10MB
+            if (file.size > maxSize) {
+                showAlert('File size too large. Please select an image smaller than 10MB.');
+                fileInput.value = '';
                 return;
             }
             
