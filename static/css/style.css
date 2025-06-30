@@ -198,10 +198,11 @@ body::before {
 }
 
 /* Button animations */
-.btn {
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
+.btn, .btn.primary, .btn.secondary {
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .btn::before {
@@ -361,6 +362,9 @@ body::before {
     color: #222;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     transform: translateZ(0);
+    min-width: 260px;
+    width: 260px;
+    max-width: 320px;
 }
 
 .sidebar:hover {
@@ -1203,10 +1207,12 @@ body::before {
     .sidebar {
         display: block !important;
         position: static;
-        width: 210px;
+        width: 260px;
         height: auto;
         box-shadow: 0 4px 16px rgba(0,0,0,0.08);
         border-radius: 10px;
+        min-width: 260px !important;
+        max-width: 320px !important;
     }
     .sidebar .header {
         display: block;
@@ -1747,4 +1753,34 @@ body::before {
     .message-content th, .message-content td {
         padding: 6px 8px;
     }
+}
+
+/* Sidebar button uniform width and centering */
+.sidebar .btn, .sidebar .btn.primary, .sidebar .btn.secondary {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    justify-content: center;
+    text-align: center;
+}
+
+/* Center premium indicator and All Models Info button */
+#premiumIndicator, #botInfoBtn {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+}
+
+/* Center the mobile premium indicator and All Models Info button as well */
+#premiumIndicatorMobile, #enterCodeBtnMobile {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
 }
