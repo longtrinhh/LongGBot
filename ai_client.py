@@ -99,11 +99,11 @@ async def ask_ai(question: str, model: str = MODEL_NAME, context=None, image_dat
                         return answer_clean
                     else:
                         logger.error(f"No response content from {model}")
-                        return "Error: Không thể lấy câu trả lời. Vui lòng thử lại sau."
+                        return "Error: Unable to get a response. Please try again later."
                 else:
                     error_text = await response.text()
                     logger.error(f"Error from API: {response.status} - {error_text}")
-                    return f"Error: Lỗi API ({response.status}). Vui lòng thử lại sau."
+                    return f"Error: API error ({response.status}). Please try again later."
     except Exception as e:
         logger.error(f"Error asking AI: {e}")
-        return f"Error: Có lỗi xảy ra với bot: {str(e)}" 
+        return f"Error: An error occurred with the bot: {str(e)}" 

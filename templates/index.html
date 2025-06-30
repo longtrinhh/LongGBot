@@ -63,10 +63,10 @@
                     <div class="section-title">
                         <i class="fas fa-magic"></i> Quick Actions
                     </div>
-                    <button class="btn" onclick="showImageUpload()">
+                    <button class="btn" onclick="showImageUpload()" {% if not premium %}disabled title="Premium required. Enter a code to unlock."{% endif %}>
                         <i class="fas fa-upload"></i> Upload Image
                     </button>
-                    <button class="btn" onclick="showImageGenerator()">
+                    <button class="btn" onclick="showImageGenerator()" {% if not premium %}disabled title="Premium required. Enter a code to unlock."{% endif %}>
                         <i class="fas fa-paint-brush"></i> Generate Image
                     </button>
                 </div>

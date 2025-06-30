@@ -1767,7 +1767,6 @@ body::before {
 
 /* Center premium indicator and All Models Info button */
 #premiumIndicator, #botInfoBtn {
-    display: flex !important;
     justify-content: center !important;
     align-items: center !important;
     margin-left: auto;
@@ -1777,10 +1776,32 @@ body::before {
 
 /* Center the mobile premium indicator and All Models Info button as well */
 #premiumIndicatorMobile, #enterCodeBtnMobile {
-    display: flex !important;
     justify-content: center !important;
     align-items: center !important;
     margin-left: auto;
     margin-right: auto;
     width: 100%;
+}
+
+.sidebar .btn[disabled][title]:hover::after, .sidebar .btn[disabled][title]:focus::after {
+    content: attr(title);
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #222;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 6px;
+    white-space: nowrap;
+    font-size: 0.95em;
+    margin-left: 10px;
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    pointer-events: none;
+}
+
+.sidebar .btn[disabled] {
+    position: relative;
+    cursor: not-allowed;
 }
