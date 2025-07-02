@@ -2,6 +2,8 @@ import json
 import os
 import logging
 from typing import List, Dict, Optional
+from google.cloud import firestore
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +14,10 @@ MODEL_FILE = "user_models.json"
 # In-memory storage
 user_contexts = {}
 user_models = {}
+
+# Firestore client
+firestore_client = firestore.Client()
+FIRESTORE_COLLECTION = "user_conversations"
 
 def load_data():
     """Load user contexts and models from files."""
@@ -108,6 +114,64 @@ def remove_think_block(text):
 def get_full_conversation(user_key: str) -> List[Dict]:
     """Return the full conversation history for a user (by code or user_id)."""
     return user_contexts.get(str(user_key), [])
+
+def get_firestore_conversations_for_user(user_id):
+    """List all conversation docs for a user."""
+    docs = firestore_client.collection(FIRESTORE_COLLECTION).where("user_id", "==", user_id).stream()
+    return [doc.to_dict() for doc in docs]
+
+def get_firestore_conversation(user_id, conversation_id):
+    doc_ref = firestore_client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
+    doc = doc_ref.get()
+    if doc.exists:
+        return doc.to_dict().get("messages", [])
+    return []
+
+def add_firestore_message(user_id, conversation_id, message):
+    doc_ref = firestore_client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
+    doc = doc_ref.get()
+    if doc.exists:
+        messages = doc.to_dict().get("messages", [])
+    else:
+        messages = []
+    messages.append(message)
+    doc_ref.set({
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "messages": messages
+    })
+
+def create_firestore_conversation(user_id, title=None):
+    import uuid
+    from datetime import datetime
+    # Determine if user is premium (hash length 64)
+    is_premium = isinstance(user_id, str) and len(user_id) == 64
+    max_convs = 10 if is_premium else 2
+    # Fetch all conversations for this user
+    docs = list(firestore_client.collection(FIRESTORE_COLLECTION).where("user_id", "==", user_id).stream())
+    if len(docs) >= max_convs:
+        # Find the oldest conversation (by created_at, fallback to doc.update_time)
+        def get_sort_key(doc):
+            data = doc.to_dict()
+            return data.get("created_at") or str(doc.update_time)
+        docs_sorted = sorted(docs, key=get_sort_key)
+        # Delete the oldest
+        oldest_doc = docs_sorted[0]
+        oldest_doc.reference.delete()
+    conv_id = str(uuid.uuid4())
+    doc_ref = firestore_client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conv_id}")
+    doc_ref.set({
+        "user_id": user_id,
+        "conversation_id": conv_id,
+        "messages": [],
+        "title": title or "New Conversation",
+        "created_at": datetime.utcnow().isoformat() + 'Z'
+    })
+    return conv_id
+
+def delete_firestore_conversation(user_id, conversation_id):
+    doc_ref = firestore_client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
+    doc_ref.delete()
 
 # Load data when module is imported
 load_data() 

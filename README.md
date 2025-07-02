@@ -2,6 +2,20 @@
 
 A modern web-based AI assistant, featuring multiple AI models for chat and image generation/editing.
 
+## Change Log
+
+### V1.1
+- Switched conversation storage to Firestore (cloud database)
+- Added support for multiple conversations per user (with separation between users)
+- Added conversation list modal with create, switch, and delete features
+- Limited saved conversations: 10 for premium users, 2 for normal users (oldest auto-deleted)
+- Improved sidebar layout and grouping for better UX
+- Added confirmation modals for creating and deleting conversations (custom modal, not browser alert)
+- All alerts and confirmations now use unified modal style
+- Fixed modal overlay issues on mobile (no stuck dark screen)
+- Newest conversations always appear at the top of the list
+- Various bug fixes and UI polish for mobile and desktop
+
 ## Features
 
 ### 🤖 Chat Models

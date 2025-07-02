@@ -1,5 +1,6 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+node_modules/
 *.py[cod]
 *$py.class
 
@@ -183,3 +184,7 @@ cython_debug/
 
 codes.txt
 config.py
+
+# Firebase config (frontend, do not commit)
+firebase-config.js
+firebase-init.js

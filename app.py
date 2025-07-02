@@ -5,12 +5,16 @@ import base64
 import io
 from ai_client import ask_ai
 from ai_image_client import AIImageClient
-from shared_context import get_user_context, add_question_to_context, clear_user_context, get_user_model, set_user_model, get_full_conversation
+from shared_context import (
+    get_user_context, add_question_to_context, clear_user_context, get_user_model, set_user_model, get_full_conversation,
+    get_firestore_conversations_for_user, get_firestore_conversation, add_firestore_message, create_firestore_conversation, delete_firestore_conversation
+)
 from config import CHAT_MODELS, IMAGE_GEN_MODELS, MODEL_NAME, FLASK_SECRET_KEY
 import uuid
 import os
 import hashlib
 from PIL import Image
+import click
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY  # Secure secret key
@@ -92,12 +96,82 @@ def validate_code():
         resp.set_cookie('premium_code_hash', '', expires=0)
         return resp, 403
 
+@app.route('/conversations', methods=['GET'])
+def list_conversations():
+    user_key = get_user_key()
+    conversations = get_firestore_conversations_for_user(user_key)
+    # Sort by creation time (newest first)
+    def get_sort_key(conv):
+        # Prefer 'created_at', fallback to 'last_updated', fallback to conversation_id
+        return conv.get('created_at') or conv.get('last_updated') or conv.get('conversation_id')
+    conversations = sorted(conversations, key=get_sort_key, reverse=False)  # Oldest first
+    # To get newest first, reverse the list
+    conversations = conversations[::1]
+    # Return only summary info (id, title, first message, last updated)
+    summaries = []
+    for conv in conversations:
+        messages = conv.get('messages', [])
+        summaries.append({
+            'conversation_id': conv.get('conversation_id'),
+            'title': conv.get('title', ''),
+            'first_message': messages[0]['content'] if messages else '',
+            'last_updated': conv.get('last_updated', None),
+            'created_at': conv.get('created_at', None)
+        })
+    return jsonify({'conversations': summaries})
+
+@app.route('/conversations', methods=['POST'])
+def new_conversation():
+    user_key = get_user_key()
+    print('DEBUG /conversations user_key:', user_key)
+    if not user_key:
+        return jsonify({'error': 'User not identified. Please reload the page.'}), 400
+    data = request.get_json() or {}
+    title = data.get('title')
+    print('DEBUG /conversations title:', title)
+    try:
+        conv_id = create_firestore_conversation(user_key, title)
+        print('DEBUG /conversations conv_id:', conv_id)
+        return jsonify({'conversation_id': conv_id})
+    except Exception as e:
+        print('ERROR /conversations exception:', str(e))
+        return jsonify({'error': f'Exception: {str(e)}'}), 500
+
+@app.route('/conversations/<conversation_id>', methods=['GET'])
+def get_conversation(conversation_id):
+    user_key = get_user_key()
+    messages = get_firestore_conversation(user_key, conversation_id)
+    return jsonify({'messages': messages})
+
+@app.route('/conversations/<conversation_id>/message', methods=['POST'])
+def add_message(conversation_id):
+    user_key = get_user_key()
+    data = request.get_json()
+    message = data.get('message')
+    role = data.get('role', 'user')
+    if not message:
+        return jsonify({'error': 'Message cannot be empty'}), 400
+    add_firestore_message(user_key, conversation_id, {'role': role, 'content': message})
+    return jsonify({'success': True})
+
+@app.route('/conversations/<conversation_id>', methods=['DELETE'])
+def delete_conversation(conversation_id):
+    user_key = get_user_key()
+    if not user_key:
+        return jsonify({'error': 'User not identified.'}), 400
+    try:
+        delete_firestore_conversation(user_key, conversation_id)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
         data = request.get_json()
         message = data.get('message', '').strip()
-        image_data = data.get('image', '')  # Get uploaded image data
+        image_data = data.get('image', '')
+        conversation_id = data.get('conversation_id')
         user_key = get_user_key()
         premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
         if not message:
@@ -106,8 +180,17 @@ def chat():
             model = get_user_model(user_key, 'chat') or 'claude-opus-4-20250514-thinking'
         else:
             model = 'gpt-4o-mini-search-preview-2025-03-11'
-        context = get_user_context(user_key)
-        
+        if conversation_id:
+            context = get_firestore_conversation(user_key, conversation_id)
+        else:
+            # Use the latest conversation or create a new one
+            conversations = get_firestore_conversations_for_user(user_key)
+            if conversations:
+                conversation_id = conversations[0]['conversation_id']
+                context = get_firestore_conversation(user_key, conversation_id)
+            else:
+                conversation_id = create_firestore_conversation(user_key)
+                context = []
         # Check if this is an image generation request
         image_keywords = [
             "generate image", "tạo ảnh", "tạo tranh", "tạo logo", "gen image", 
@@ -118,28 +201,26 @@ def chat():
         if is_image_request:
             if not premium:
                 return jsonify({'error': 'Image generation is only available for premium users.'}), 403
-            return jsonify({'type': 'image_request', 'prompt': message})
-        
+            return jsonify({'type': 'image_request', 'prompt': message, 'conversation_id': conversation_id})
         # Convert base64 image data to bytes if present
         image_bytes = None
         if image_data:
             try:
-                # Remove data URL prefix if present
                 if image_data.startswith('data:image/'):
                     image_data = image_data.split(',')[1]
                 image_bytes = base64.b64decode(image_data)
             except Exception as e:
                 logger.error(f"Error decoding image data: {e}")
                 return jsonify({'error': 'Invalid image data'}), 400
-        
         # Call AI with image data if present
         response = run_async(ask_ai(message, model, context, image_bytes))
-        add_question_to_context(user_key, message, response)
-        
+        add_firestore_message(user_key, conversation_id, {'role': 'user', 'content': message})
+        add_firestore_message(user_key, conversation_id, {'role': 'assistant', 'content': response})
         return jsonify({
             'type': 'chat',
             'response': response,
-            'model': model
+            'model': model,
+            'conversation_id': conversation_id
         })
     except Exception as e:
         logger.error(f"Error in chat: {e}")
@@ -280,8 +361,17 @@ def upload_image():
 @app.route('/history', methods=['GET'])
 def get_history():
     user_key = get_user_key()
-    history = get_full_conversation(user_key)
-    return jsonify({'history': history})
+    conversation_id = request.args.get('conversation_id')
+    if conversation_id:
+        history = get_firestore_conversation(user_key, conversation_id)
+    else:
+        conversations = get_firestore_conversations_for_user(user_key)
+        if conversations:
+            conversation_id = conversations[0]['conversation_id']
+            history = get_firestore_conversation(user_key, conversation_id)
+        else:
+            history = []
+    return jsonify({'history': history, 'conversation_id': conversation_id})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 
