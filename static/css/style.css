@@ -1916,3 +1916,67 @@ body.dark-mode .chat-input-container {
     background: #23262f !important;
     border-top: 1px solid #33374a !important;
 }
+
+body.dark-mode strong,
+body.dark-mode .message-content strong {
+    color: #f1f1f1 !important;
+}
+
+body.dark-mode h1,
+body.dark-mode h2,
+body.dark-mode h3,
+body.dark-mode h4,
+body.dark-mode h5,
+body.dark-mode h6,
+body.dark-mode .message-content h1,
+body.dark-mode .message-content h2,
+body.dark-mode .message-content h3,
+body.dark-mode .message-content h4,
+body.dark-mode .message-content h5,
+body.dark-mode .message-content h6 {
+    color: #f1f1f1 !important;
+}
+body.dark-mode em,
+body.dark-mode .message-content em {
+    color: #b0b0b0 !important;
+}
+body.dark-mode blockquote,
+body.dark-mode .message-content blockquote {
+    color: #b0b0b0 !important;
+    border-left: 4px solid #8ab4f8 !important;
+    background: rgba(74, 74, 138, 0.10) !important;
+}
+body.dark-mode code,
+body.dark-mode .message-content code {
+    color: #8ab4f8 !important;
+    background: #23262f !important;
+}
+body.dark-mode pre,
+body.dark-mode .message-content pre {
+    color: #f1f1f1 !important;
+    background: #181a20 !important;
+    border: 1px solid #33374a !important;
+}
+body.dark-mode th,
+body.dark-mode td,
+body.dark-mode .message-content th,
+body.dark-mode .message-content td {
+    color: #f1f1f1 !important;
+    background: #23262f !important;
+    border-color: #33374a !important;
+}
+body.dark-mode hr,
+body.dark-mode .message-content hr {
+    border-top: 1px solid #33374a !important;
+}
+
+body.dark-mode a,
+body.dark-mode .message-content a {
+    color: #8ab4f8 !important;
+    text-decoration: underline;
+}
+body.dark-mode a:hover,
+body.dark-mode .message-content a:hover {
+    color: #a5c9fa !important;
+    text-decoration: underline;
+}
