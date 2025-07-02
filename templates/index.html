@@ -11,18 +11,12 @@
 <body>
     <!-- Top bar for mobile -->
     <div class="topbar-mobile" id="topbarMobile">
-        <div class="topbar-logo">
-            <i class="fas fa-robot"></i> LongGBot
-        </div>
         <button class="burger-btn" onclick="toggleSidebar()">
             <i class="fas fa-bars"></i>
         </button>
-        <button id="enterCodeBtnMobile" class="btn" style="font-size:0.85em;padding:4px 10px;margin-left:8px;" onclick="showCodeModal()">Enter Premium Code</button>
-        {% if premium %}
-        <span id="premiumIndicatorMobile" class="premium-indicator active" style="display: inline-flex; align-items: center; margin-left: 8px;">
-            <span style="color: #2ecc40; font-weight: bold;"><i class="fas fa-crown"></i> Premium</span>
-        </span>
-        {% endif %}
+        <div class="topbar-logo">
+            <i class="fas fa-robot"></i> LongGBot
+        </div>
     </div>
     <div class="container">
         <div class="main-content">
@@ -30,13 +24,12 @@
                 <div class="header">
                     <h1><i class="fas fa-robot"></i> LongGBot</h1>
                     <p>Advanced AI Assistant with Multiple Models</p>
-                    <button id="enterCodeBtn" class="btn" style="font-size:0.85em;padding:4px 10px;" onclick="showCodeModal()">Enter Premium Code</button>
-                    <button id="botInfoBtn" class="btn" style="font-size:0.85em;padding:4px 10px;margin-left:6px;" onclick="showBotInfoModal()"><i class="fas fa-info-circle"></i> All Models Info</button>
-                    <br>
-                    <span id="premiumIndicator" class="premium-indicator{% if premium %} active{% endif %}" style="display: none; align-items: center;">
-                        <span style="color: #2ecc40; font-weight: bold;"><i class="fas fa-crown"></i> Premium</span>
-                    </span>
                 </div>
+                <button id="botInfoBtn" class="btn" style="font-size:0.85em;padding:4px 10px;margin-top:8px;" onclick="showBotInfoModal()"><i class="fas fa-info-circle"></i> All Models Info</button>
+                <button id="enterCodeBtn" class="btn" style="font-size:0.85em;padding:4px 10px;margin-top:8px;" onclick="showCodeModal()">Enter Premium Code</button>
+                <span id="premiumIndicator" class="premium-indicator{% if premium %} active{% endif %}" style="display: none; align-items: center; margin-top:8px;">
+                    <span style="color: #2ecc40; font-weight: bold;"><i class="fas fa-crown"></i> Premium</span>
+                </span>
                 <div class="section">
                     <div class="section-title">
                         <i class="fas fa-cog"></i> Settings

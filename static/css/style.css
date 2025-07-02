@@ -1823,19 +1823,18 @@ body::before {
     }
 }
 
-/* Make sure the All Models Info button is visible and styled on mobile */
 #botInfoBtn {
-    display: inline-block !important;
+    display: block !important;
     width: 100% !important;
-    margin-top: 8px !important;
-    font-size: 1em !important;
-    padding: 10px 14px !important;
+    margin: 4px 0 !important;
+    font-size: 0.9rem !important;
+    padding: 8px 16px !important;
     border-radius: 8px !important;
     box-sizing: border-box !important;
     background: #ededed !important;
     color: #111 !important;
     font-weight: 600;
-    border: none;
+    border: 1px solid #e0e0e0 !important;
     box-shadow: 0 2px 6px rgba(102, 126, 234, 0.10);
     text-align: center;
 }
