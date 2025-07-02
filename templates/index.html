@@ -30,8 +30,11 @@
                 <span id="premiumIndicator" class="premium-indicator{% if premium %} active{% endif %}" style="display: none; align-items: center; margin-top:8px;">
                     <span style="color: #2ecc40; font-weight: bold;"><i class="fas fa-crown"></i> Premium</span>
                 </span>
+                <button id="darkModeToggle" class="btn" style="font-size:1.2em;padding:4px 10px;margin-top:8px;" aria-label="Toggle dark mode" onclick="toggleDarkMode()">
+                    <i class="fas fa-moon"></i>
+                </button>
                 <div class="section">
-                    <div class="section-title">
+                    <div class="section-title" style="margin: 5px;">
                         <i class="fas fa-cog"></i> Settings
                     </div>
                     <div class="current-model">
@@ -1408,6 +1411,40 @@
                 }, 300);
             });
         });
+
+        // Dark mode logic
+        function setDarkMode(enabled) {
+            if (enabled) {
+                document.body.classList.add('dark-mode');
+                localStorage.setItem('darkMode', 'true');
+                setDarkModeIcon(true);
+            } else {
+                document.body.classList.remove('dark-mode');
+                localStorage.setItem('darkMode', 'false');
+                setDarkModeIcon(false);
+            }
+        }
+        function toggleDarkMode() {
+            const enabled = !document.body.classList.contains('dark-mode');
+            setDarkMode(enabled);
+        }
+        function setDarkModeIcon(enabled) {
+            const icon = enabled ? 'fa-sun' : 'fa-moon';
+            const iconOff = enabled ? 'fa-moon' : 'fa-sun';
+            const btn = document.getElementById('darkModeToggle');
+            if (btn) {
+                const i = btn.querySelector('i');
+                if (i) {
+                    i.classList.remove(iconOff);
+                    i.classList.add(icon);
+                }
+            }
+        }
+        // On page load, apply saved mode
+        (function() {
+            const dark = localStorage.getItem('darkMode') === 'true';
+            setDarkMode(dark);
+        })();
     </script>
     <div id="sidebarOverlay" class="sidebar-overlay" style="display: none;" onclick="toggleSidebar()"></div>
 </body>
