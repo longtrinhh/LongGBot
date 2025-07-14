@@ -2,6 +2,7 @@ import aiohttp
 import logging
 import base64
 import re
+import json
 from io import BytesIO
 from PIL import Image
 from config import API_KEY, API_BASE_URL, MODEL_NAME
@@ -39,15 +40,97 @@ def remove_think_block(text):
     """Remove <think>...</think> blocks (including multiline)"""
     return re.sub(r'<think>[\s\S]*?</think>', '', text, flags=re.IGNORECASE)
 
-async def ask_ai(question: str, model: str = MODEL_NAME, context=None, image_data: bytes = None) -> str:
-    """Ask AI model with optional image support."""
+async def ask_ai_stream(question: str, model: str = MODEL_NAME, context=None, image_data: bytes = None):
+    """Ask AI model with streaming support."""
     # Prepare messages
     messages = context[:] if context else []
     
-        # Always append the latest user message
+    # Always append the latest user message
     messages.append({"role": "user", "content": question})
 
+    # If there's an image, encode it and add to the last user message
+    if image_data:
+        base64_image = await encode_image_to_base64(image_data)
+        if base64_image:
+            # Find the last user message and add image to it
+            for i in range(len(messages) - 1, -1, -1):
+                if messages[i]["role"] == "user":
+                    if isinstance(messages[i]["content"], str):
+                        # Convert string content to list format with image
+                        messages[i]["content"] = [
+                            {"type": "text", "text": messages[i]["content"]},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                        ]
+                    elif isinstance(messages[i]["content"], list):
+                        # Add image to existing list content
+                        messages[i]["content"].append({
+                            "type": "image_url", 
+                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                        })
+                    break
     
+    data = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": 10000,
+        "temperature": 0.7,
+        "stream": True,
+        "system": "You are a helpful AI assistant. Use proper markdown formatting in your responses including headers (##, ###), bold (**text**), italic (*text*), code blocks (```), inline code (`code`), lists (- or 1.), and tables when appropriate. You can think through problems step by step and provide detailed, accurate responses. You can also analyze images and answer questions about them."
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{API_BASE_URL}/chat/completions",
+                json=data,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=300)  # Increased timeout for image processing
+            ) as response:
+                if response.status == 200:
+                    full_response = ""
+                    async for line in response.content:
+                        line = line.decode('utf-8').strip()
+                        if line.startswith('data: '):
+                            data_str = line[6:]  # Remove 'data: ' prefix
+                            if data_str == '[DONE]':
+                                break
+                            try:
+                                data_json = json.loads(data_str)
+                                if 'choices' in data_json and len(data_json['choices']) > 0:
+                                    choice = data_json['choices'][0]
+                                    if 'delta' in choice and 'content' in choice['delta']:
+                                        content = choice['delta']['content']
+                                        if content:
+                                            full_response += content
+                                            yield content
+                            except json.JSONDecodeError:
+                                continue
+                    
+                    # Remove think blocks from the full response and yield the cleaned version
+                    full_response_clean = remove_think_block(full_response)
+                    # Note: We don't return here since this is a generator function
+                    # The cleaned response will be handled by the caller
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Error from API: {response.status} - {error_text}")
+                    yield f"Error: API error ({response.status}). Please try again later."
+    except Exception as e:
+        logger.error(f"Error asking AI: {e}")
+        yield f"Error: An error occurred with the bot: {str(e)}"
+
+async def ask_ai(question: str, model: str = MODEL_NAME, context=None, image_data: bytes = None) -> str:
+    """Ask AI model with optional image support (non-streaming version)."""
+    # Prepare messages
+    messages = context[:] if context else []
+    
+    # Always append the latest user message
+    messages.append({"role": "user", "content": question})
+
     # If there's an image, encode it and add to the last user message
     if image_data:
         base64_image = await encode_image_to_base64(image_data)

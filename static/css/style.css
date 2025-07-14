@@ -1912,6 +1912,24 @@ body.dark-mode .current-model {
     border: 1px solid #33374a !important;
 }
 
+body.dark-mode .model-option {
+    color: #f1f1f1 !important;
+    background: #23262f !important;
+    border: 1px solid #33374a !important;
+}
+
+body.dark-mode .model-option:hover {
+    background: #33374a !important;
+    color: #ffffff !important;
+    border-color: #4a4a8a !important;
+}
+
+body.dark-mode .model-option.selected {
+    background: #4a4a8a !important;
+    color: #ffffff !important;
+    border-color: #6a6a9a !important;
+}
+
 body.dark-mode .chat-input-container {
     background: #23262f !important;
     border-top: 1px solid #33374a !important;

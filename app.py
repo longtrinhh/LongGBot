@@ -1,9 +1,10 @@
 from flask import Flask, render_template, request, jsonify, send_file, make_response
+import json
 import asyncio
 import logging
 import base64
 import io
-from ai_client import ask_ai
+from ai_client import ask_ai, ask_ai_stream
 from ai_image_client import AIImageClient
 from shared_context import (
     get_user_context, add_question_to_context, clear_user_context, get_user_model, set_user_model, get_full_conversation,
@@ -177,7 +178,7 @@ def chat():
         if not message:
             return jsonify({'error': 'Message cannot be empty'}), 400
         if premium:
-            model = get_user_model(user_key, 'chat') or 'claude-opus-4-20250514-thinking'
+            model = get_user_model(user_key, 'chat') or 'claude-sonnet-4-20250514-thinking:safe'
         else:
             model = 'gpt-4o-mini-search-preview-2025-03-11'
         if conversation_id:
@@ -224,6 +225,106 @@ def chat():
         })
     except Exception as e:
         logger.error(f"Error in chat: {e}")
+        return jsonify({'error': f'Error: {str(e)}'}), 500
+
+@app.route('/chat/stream', methods=['POST'])
+def chat_stream():
+    """Streaming chat endpoint."""
+    try:
+        data = request.get_json()
+        message = data.get('message', '').strip()
+        image_data = data.get('image', '')
+        conversation_id = data.get('conversation_id')
+        user_key = get_user_key()
+        premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
+        
+        if not message:
+            return jsonify({'error': 'Message cannot be empty'}), 400
+            
+        if premium:
+            model = get_user_model(user_key, 'chat') or 'claude-sonnet-4-20250514-thinking:safe'
+        else:
+            model = 'gpt-4o-mini-search-preview-2025-03-11'
+            
+        if conversation_id:
+            context = get_firestore_conversation(user_key, conversation_id)
+        else:
+            # Use the latest conversation or create a new one
+            conversations = get_firestore_conversations_for_user(user_key)
+            if conversations:
+                conversation_id = conversations[0]['conversation_id']
+                context = get_firestore_conversation(user_key, conversation_id)
+            else:
+                conversation_id = create_firestore_conversation(user_key)
+                context = []
+                
+        # Check if this is an image generation request
+        image_keywords = [
+            "generate image", "tạo ảnh", "tạo tranh", "tạo logo", "gen image", 
+            "gen pic", "gen photo", "gen logo", "create image", "create pic", 
+            "create photo", "create logo"
+        ]
+        is_image_request = any(keyword in message.lower() for keyword in image_keywords)
+        if is_image_request:
+            if not premium:
+                return jsonify({'error': 'Image generation is only available for premium users.'}), 403
+            return jsonify({'type': 'image_request', 'prompt': message, 'conversation_id': conversation_id})
+            
+        # Convert base64 image data to bytes if present
+        image_bytes = None
+        if image_data:
+            try:
+                if image_data.startswith('data:image/'):
+                    image_data = image_data.split(',')[1]
+                image_bytes = base64.b64decode(image_data)
+            except Exception as e:
+                logger.error(f"Error decoding image data: {e}")
+                return jsonify({'error': 'Invalid image data'}), 400
+
+        def generate():
+            full_response = ""
+            try:
+                async def stream_response():
+                    nonlocal full_response
+                    async for chunk in ask_ai_stream(message, model, context, image_bytes):
+                        if chunk:
+                            full_response += chunk
+                            yield f"data: {json.dumps({'chunk': chunk, 'model': model, 'conversation_id': conversation_id})}\n\n"
+                    
+                    # Save the complete conversation after streaming is done
+                    add_firestore_message(user_key, conversation_id, {'role': 'user', 'content': message})
+                    add_firestore_message(user_key, conversation_id, {'role': 'assistant', 'content': full_response})
+                    yield f"data: {json.dumps({'done': True, 'model': model, 'conversation_id': conversation_id})}\n\n"
+                
+                # Run the async generator
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    async_gen = stream_response()
+                    while True:
+                        try:
+                            chunk = loop.run_until_complete(async_gen.__anext__())
+                            yield chunk
+                        except StopAsyncIteration:
+                            break
+                finally:
+                    loop.close()
+                    
+            except Exception as e:
+                logger.error(f"Error in streaming chat: {e}")
+                yield f"data: {json.dumps({'error': f'Error: {str(e)}'})}\n\n"
+
+        return app.response_class(
+            generate(),
+            mimetype='text/plain',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no'
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in chat_stream: {e}")
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
 @app.route('/generate_image', methods=['POST'])

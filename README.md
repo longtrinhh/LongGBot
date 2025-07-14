@@ -4,6 +4,14 @@ A modern web-based AI assistant, featuring multiple AI models for chat and image
 
 ## Change Log
 
+### V1.2
+- **Real-time Streaming**: Added streaming support for all chat models with real-time response display
+- **Dark Mode Improvements**: Fixed model selector hover text visibility in dark mode
+- **New AI Models**: Added Grok 4 model for enhanced AI capabilities
+- **Enhanced UI**: Improved streaming experience with proper thinking message removal
+- **Better Error Handling**: Enhanced error handling for streaming responses
+- **Mobile Optimization**: Improved streaming performance on mobile devices
+
 ### V1.1
 - Switched conversation storage to Firestore (cloud database)
 - Added support for multiple conversations per user (with separation between users)
@@ -22,8 +30,10 @@ A modern web-based AI assistant, featuring multiple AI models for chat and image
 - **Claude Opus 4** - Advanced reasoning and analysis
 - **GPT o3 High** - High-performance language model
 - **Gemini 2.5 Pro** - Google's latest AI model
-- **Perplexity Sonar Deep Research** - Web search capabilities
+- **Grok 4** - xAI's latest reasoning model
+- **Perplexity Sonar Reasoning Pro** - Web search capabilities
 - **GPT o3 Mini Online** - Fast and efficient model
+- **GPT 4o Mini Search** - Free model with web search capabilities
 
 ### 🎨 Image Generation Models
 - **Google Imagen 4.0 Ultra** - High-quality image generation
@@ -39,10 +49,12 @@ A modern web-based AI assistant, featuring multiple AI models for chat and image
 - **Multiple Formats** - Support for various image formats
 
 ### 💬 Chat Features
+- **Real-time Streaming** - Instant character-by-character response display
 - **Conversation History** - Maintains context across sessions
 - **Model Switching** - Easy switching between different AI models
-- **Real-time Chat** - Instant responses with loading indicators
+- **Dark Mode Support** - Full dark mode with proper text visibility
 - **Error Handling** - Graceful error handling and user feedback
+- **Mobile Optimized** - Responsive design for all devices
 
 ## Installation
 
@@ -108,15 +120,18 @@ Access Codes are in codes.txt
 
 ```
 longgbot/
-├── app.py                 # Main Flask application
+├── app.py                 # Main Flask application with streaming endpoints
 ├── config.py             # Configuration and model settings
-├── ai_client.py          # AI chat functionality
+├── ai_client.py          # AI chat functionality with streaming support
 ├── ai_image_client.py    # Image generation and editing
-├── shared_context.py     # Conversation history management
+├── shared_context.py     # Conversation history management with Firestore
 ├── requirements.txt      # Python dependencies
 ├── README.md            # This file
 ├── templates/
-│   └── index.html       # Web interface
+│   └── index.html       # Web interface with streaming UI
+├── static/
+│   └── css/
+│       └── style.css    # Styles with dark mode support
 ├── user_contexts.json   # User conversation history (auto-generated)
 └── user_models.json     # User model preferences (auto-generated)
 ```
@@ -125,21 +140,25 @@ longgbot/
 
 ### Backend
 - **Framework**: Flask (Python)
-- **Async Support**: aiohttp for API calls
+- **Async Support**: aiohttp for API calls and streaming
 - **Image Processing**: Pillow for image manipulation
 - **Session Management**: Flask sessions for user identification
+- **Streaming**: Server-Sent Events (SSE) for real-time responses
+- **Database**: Firestore for conversation storage
 
 ### Frontend
-- **HTML5/CSS3**: Modern, responsive design
-- **JavaScript**: Vanilla JS for interactivity
-- **UI Framework**: Custom CSS with gradient backgrounds
+- **HTML5/CSS3**: Modern, responsive design with dark mode support
+- **JavaScript**: Vanilla JS for interactivity and streaming
+- **UI Framework**: Custom CSS with gradient backgrounds and animations
 - **Icons**: Font Awesome for beautiful icons
+- **Markdown Rendering**: Real-time markdown parsing for AI responses
 
 ### API Integration
 - **ElectronHub API**: For all AI model interactions
 - **Image Generation**: `/v1/images/generations` endpoint
 - **Image Editing**: `/v1/images/edits` endpoint
-- **Chat Completions**: `/v1/chat/completions` endpoint
+- **Chat Completions**: `/v1/chat/completions` endpoint with streaming support
+- **Streaming**: Real-time response streaming for all models
 
 ## Security Features
 
@@ -167,14 +186,23 @@ longgbot/
    - Check your internet connection
    - Verify the API key is correct in `config.py`
 
-3. **Image upload issues:**
+3. **Streaming not working:**
+   - Ensure your browser supports Server-Sent Events (SSE)
+   - Check that aiohttp is properly installed: `pip install aiohttp`
+   - Verify network connectivity for streaming responses
+
+4. **Image upload issues:**
    - Ensure the image file is not corrupted
    - Check file size (should be under 10MB)
    - Verify the file is a supported image format
 
-4. **Model switching not working:**
+5. **Model switching not working:**
    - Check browser console for JavaScript errors
    - Ensure you have write permissions in the directory
+
+6. **Dark mode issues:**
+   - Clear browser cache and reload the page
+   - Check if your browser supports CSS custom properties
 
 ### Logs
 
