@@ -7,6 +7,66 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}?v={{ range(1, 1000) | random }}" rel="stylesheet">
     <link rel="icon" type="image/jpg" href="{{ url_for('static', filename='img/longgbot_log.jpg') }}">
+    <!-- Add minimal CSS for copy buttons -->
+    <style>
+        .copy-code-btn, .copy-markdown-btn, .copy-plain-btn {
+            background: #f5f5f5;
+            color: #333;
+            border: 1px solid #ccc;
+            border-radius: 50%;
+            font-size: 1.1em;
+            padding: 6px 8px;
+            margin: 2px 4px 2px 0;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+            box-shadow: 0 2px 6px rgba(102,126,234,0.10);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 32px;
+            min-height: 32px;
+        }
+        .copy-code-btn.copied, .copy-markdown-btn.copied, .copy-plain-btn.copied {
+            background: #d1e7dd;
+            color: #1976d2;
+        }
+        .copy-code-btn:hover, .copy-markdown-btn:hover, .copy-plain-btn:hover {
+            background: #e3e7ef;
+            color: #1976d2;
+        }
+        .copy-btn-bar {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+            margin-bottom: 0;
+            justify-content: flex-end;
+        }
+        .copy-btn-bar-bottom {
+            position: absolute;
+            right: 10px;
+            bottom: 10px;
+            z-index: 10;
+        }
+        .message-content {
+            position: relative;
+            padding-bottom: 50px;
+        }
+        
+        /* Mobile adjustments for copy buttons */
+        @media (max-width: 700px) {
+            .copy-btn-bar-bottom {
+                position: relative;
+                right: auto;
+                bottom: auto;
+                margin-top: 15px;
+                text-align: right;
+            }
+            .message-content {
+                padding-bottom: 10px;
+            }
+        }
+        pre { position: relative; }
+    </style>
 </head>
 <body>
     <!-- Top bar for mobile -->
@@ -61,9 +121,7 @@
                     <button id="darkModeToggle" class="btn" style="font-size:1.2em; margin-bottom:8px;" aria-label="Toggle dark mode" onclick="toggleDarkMode()">
                         <i class="fas fa-moon"></i>
                     </button>
-                    <button class="btn" onclick="showImageUpload()" {% if not premium %}disabled title="Premium required. Enter a code to unlock."{% endif %}>
-                        <i class="fas fa-upload"></i> Upload Image
-                    </button>
+
                     <button class="btn" onclick="showImageGenerator()" {% if not premium %}disabled title="Premium required. Enter a code to unlock."{% endif %}>
                         <i class="fas fa-paint-brush"></i> Generate Image
                     </button>
@@ -91,6 +149,9 @@
                             placeholder="Type your message here..."
                             onkeydown="handleKeyPress(event)"
                             onpaste="handlePaste(event)"></textarea>
+                        <button class="upload-btn" onclick="showImageUpload()" id="uploadBtn" {% if not premium %}disabled title="Premium required. Enter a code to unlock."{% endif %}>
+                            <i class="fas fa-image"></i>
+                        </button>
                         <button class="send-btn" onclick="sendMessage()" id="sendBtn">
                             <i class="fas fa-paper-plane"></i>
                         </button>
@@ -184,6 +245,9 @@
                 <li><b>GPT o3 High</b>: Premium, No web search, <span style="color:#2ecc40">Image analysis</span></li>
                 <li><b>Gemini 2.5 Pro</b>: Premium, No web search, <span style="color:#2ecc40">Image analysis</span></li>
                 <li><b>Grok 4</b>: Premium, No web search, <span style="color:#2ecc40">Image analysis</span></li>
+                <li><b>DeepSeek R1</b>: Premium, No web search, <span style="color:#b8860b">No image analysis</span></li>
+                <li><b>Meta: Llama 4 Maverick</b>: Premium, No web search, <span style="color:#2ecc40">Image analysis</span></li>
+                <li><b>Microsoft: Phi 4 Multimodal Instruct</b>: Premium, No web search, <span style="color:#2ecc40">Image analysis</span></li>
                 <li><b>Perplexity Sonar Reasoning Pro</b>: Premium, Web search, <span style="color:#b8860b">No image analysis</span></li>
                 <li><b>All Image Models</b>: Premium, <span style="color:#2ecc40">Image generation</span></li>
             </ul>
@@ -289,6 +353,9 @@
             "o3-high",
             "gemini-2.5-pro-preview-05-06",
             "grok-4-0709",
+            "deepseek-r1-0528",
+            "llama-4-maverick-17b-128e-instruct",
+            "phi-4-multimodal-instruct",
             "sonar-reasoning-pro",
             "o3-mini-online",
             "imagen-4.0-ultra-generate-exp-05-20",
@@ -421,12 +488,8 @@
             sendBtn.classList.add('loading');
             sendBtn.disabled = true;
             
-            // If there's an image, show it in the user message
-            if (currentImageData) {
-                addMessage('user', message, 'normal', currentImageData);
-            } else {
-                addMessage('user', message);
-            }
+            // Add the user message
+            addMessage('user', message);
             input.value = '';
             
             // Reset input styling and remove image indicator
@@ -480,6 +543,7 @@
                 const assistantMessageDiv = addMessage('assistant', '', 'streaming');
                 let fullResponse = '';
                 let hasReceivedFirstChunk = false;
+                let thinkingShown = false;
                 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
@@ -490,6 +554,8 @@
                             // Remove loading state
                             sendBtn.classList.remove('loading');
                             sendBtn.disabled = false;
+                            // Add copy buttons to the just-finished message
+                            setTimeout(enhanceAllAssistantMessagesWithCopy, 0);
                             return;
                         }
                         
@@ -507,19 +573,41 @@
                                         sendBtn.disabled = false;
                                         addMessage('assistant', `Error: ${data.error}`, 'error');
                                         return;
-                                    } else if (data.chunk) {
-                                        if (!hasReceivedFirstChunk) {
-                                            hasReceivedFirstChunk = true;
-                                            // Clear any remaining thinking content
-                                            const messageContent = assistantMessageDiv.querySelector('.message-content');
-                                            if (messageContent) {
+                                    } else if (data.chunk !== undefined) {
+                                        const messageContent = assistantMessageDiv.querySelector('.message-content');
+                                        
+                                        // If chunk is empty string, show thinking indicator
+                                        if (data.chunk === '') {
+                                            if (!thinkingShown && messageContent) {
+                                                messageContent.innerHTML = '<span class="stream-thinking-indicator" style="color: #888; font-style: italic;"><i class="fas fa-brain"></i> Thinking...</span>';
+                                                thinkingShown = true;
+                                            }
+                                            continue;
+                                        }
+                                        
+                                        // Check for <think>...</think> block
+                                        const thinkMatch = data.chunk.match(/^<think>([\s\S]*?)<\/think>$/i);
+                                        if (thinkMatch) {
+                                            // Only show the indicator once
+                                            if (!thinkingShown && messageContent) {
+                                                messageContent.innerHTML = '<span class="stream-thinking-indicator" style="color: #888; font-style: italic;"><i class="fas fa-brain"></i> Thinking...</span>';
+                                                thinkingShown = true;
+                                            }
+                                            // Do not append to fullResponse
+                                            continue;
+                                        } else {
+                                            // Remove the thinking indicator if present when we get actual content
+                                            if (thinkingShown && messageContent) {
                                                 messageContent.innerHTML = '';
+                                                thinkingShown = false;
                                             }
                                         }
                                         
+                                        if (!hasReceivedFirstChunk) {
+                                            hasReceivedFirstChunk = true;
+                                        }
                                         fullResponse += data.chunk;
                                         // Update the message content with markdown rendering
-                                        const messageContent = assistantMessageDiv.querySelector('.message-content');
                                         if (messageContent) {
                                             messageContent.innerHTML = marked.parse(fullResponse);
                                         }
@@ -528,6 +616,76 @@
                                         // Remove loading state
                                         sendBtn.classList.remove('loading');
                                         sendBtn.disabled = false;
+                                        // Add copy buttons to the just-finished message (only the last one for efficiency)
+                                        setTimeout(() => {
+                                            const allAssistantMessages = document.querySelectorAll('.message.assistant .message-content');
+                                            if (allAssistantMessages.length > 0) {
+                                                const last = allAssistantMessages[allAssistantMessages.length - 1];
+                                                // Enhance only the last message
+                                                if (!last.querySelector('.copy-btn-bar')) {
+                                                    // (reuse the logic from enhanceAllAssistantMessagesWithCopy for a single message)
+                                                    let rawMarkdown = fullResponse; // Use fullResponse instead of textContent
+                                                    const codeBlocks = last.querySelectorAll('pre > code');
+                                                    codeBlocks.forEach((codeBlock, idx) => {
+                                                        const pre = codeBlock.parentElement;
+                                                        if (pre.querySelector('.copy-code-btn')) return;
+                                                        const btn = document.createElement('button');
+                                                        btn.className = 'copy-code-btn btn';
+                                                        btn.title = 'Copy code';
+                                                        btn.innerHTML = '<i class="fas fa-copy"></i>';
+                                                        btn.onclick = function(e) {
+                                                            e.stopPropagation();
+                                                            navigator.clipboard.writeText(codeBlock.textContent);
+                                                            btn.classList.add('copied');
+                                                            setTimeout(() => { btn.classList.remove('copied'); }, 1200);
+                                                        };
+                                                        pre.style.position = 'relative';
+                                                        btn.style.position = 'absolute';
+                                                        btn.style.top = '8px';
+                                                        btn.style.right = '8px';
+                                                        btn.style.zIndex = '2';
+                                                        pre.appendChild(btn);
+                                                    });
+                                                    const copyBtns = document.createElement('div');
+                                                    copyBtns.className = 'copy-btn-bar copy-btn-bar-bottom';
+                                                    const markdownBtn = document.createElement('button');
+                                                    markdownBtn.className = 'copy-markdown-btn btn';
+                                                    markdownBtn.title = 'Copy Markdown';
+                                                    markdownBtn.innerHTML = '<i class="fas fa-copy"></i>';
+                                                    const plainBtn = document.createElement('button');
+                                                    plainBtn.className = 'copy-plain-btn btn';
+                                                    plainBtn.title = 'Copy Plain Text';
+                                                    plainBtn.innerHTML = '<i class="fas fa-file-alt"></i>';
+                                                    copyBtns.appendChild(markdownBtn);
+                                                    copyBtns.appendChild(plainBtn);
+                                                    last.appendChild(copyBtns);
+                                                    markdownBtn.onclick = function(e) {
+                                                        e.stopPropagation();
+                                                        navigator.clipboard.writeText(rawMarkdown);
+                                                        markdownBtn.classList.add('copied');
+                                                        setTimeout(() => { markdownBtn.classList.remove('copied'); }, 1200);
+                                                    };
+                                                    plainBtn.onclick = function(e) {
+                                                        e.stopPropagation();
+                                                        let plain = rawMarkdown
+                                                            .replace(/```[\s\S]*?```/g, m => m.replace(/```/g, ''))
+                                                            .replace(/`([^`]+)`/g, '$1')
+                                                            .replace(/\*\*([^*]+)\*\*/g, '$1')
+                                                            .replace(/\*([^*]+)\*/g, '$1')
+                                                            .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+                                                            .replace(/\!\[(.*?)\]\(.*?\)/g, '')
+                                                            .replace(/#+\s/g, '')
+                                                            .replace(/\n{2,}/g, '\n')
+                                                            .replace(/^- /gm, '')
+                                                            .replace(/> /g, '')
+                                                            .replace(/\|/g, '');
+                                                        navigator.clipboard.writeText(plain);
+                                                        plainBtn.classList.add('copied');
+                                                        setTimeout(() => { plainBtn.classList.remove('copied'); }, 1200);
+                                                    };
+                                                }
+                                            }
+                                        }, 0);
                                         return;
                                     }
                                 } catch (e) {
@@ -553,7 +711,7 @@
         }
 
         function createThinkingIndicator() {
-            return `**thinking**...`;
+            return `<span style="color: #888; font-style: italic;"><i class="fas fa-brain"></i> Thinking...</span>`;
         }
 
         function createGeneratingIndicator() {
@@ -684,14 +842,12 @@
             messageDiv.className = `message ${sender}`;
             
             let messageContent = '';
+            let rawMarkdown = content;
             
             if (sender === 'assistant' && type !== 'error' && type !== 'success') {
-                // Use proper markdown rendering for assistant messages
-                let htmlContent = content;
-                
                 // Remove <think> blocks if present
-                htmlContent = htmlContent.replace(/<think>[\s\S]*?<\/think>/gi, '');
-                
+                let htmlContent = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
+                rawMarkdown = htmlContent;
                 // Use marked library to render markdown
                 htmlContent = marked.parse(htmlContent);
                 
@@ -699,13 +855,40 @@
                 const sources = extractSources(htmlContent);
                 htmlContent = linkifyReferences(htmlContent, sources);
                 
+                // Add copy code buttons to code blocks (icon only)
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = htmlContent;
+                const codeBlocks = tempDiv.querySelectorAll('pre > code');
+                codeBlocks.forEach((codeBlock, idx) => {
+                    const pre = codeBlock.parentElement;
+                    const btn = document.createElement('button');
+                    btn.className = 'copy-code-btn btn';
+                    btn.title = 'Copy code';
+                    btn.innerHTML = '<i class="fas fa-copy"></i>';
+                    btn.onclick = function(e) {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(codeBlock.textContent);
+                        btn.classList.add('copied');
+                        setTimeout(() => { btn.classList.remove('copied'); }, 1200);
+                    };
+                    pre.style.position = 'relative';
+                    btn.style.position = 'absolute';
+                    btn.style.top = '8px';
+                    btn.style.right = '8px';
+                    btn.style.zIndex = '2';
+                    pre.appendChild(btn);
+                });
+                // Copy bar at the end (bottom right) of the message
+                let copyBtns = `<div class="copy-btn-bar copy-btn-bar-bottom">
+                    <button class="copy-markdown-btn btn" title="Copy Markdown"><i class="fas fa-copy"></i></button>
+                    <button class="copy-plain-btn btn" title="Copy Plain Text"><i class="fas fa-file-alt"></i></button>
+                </div>`;
                 if (imageData) {
-                    // Show image above the text
                     messageContent = `<div class="message-content">` +
                         `<img src="${imageData}" class="message-image" alt="Generated image" style="display:block;margin-bottom:10px;max-width:100%;border-radius:8px;" onload="this.parentElement.parentElement.parentElement.scrollTop = this.parentElement.parentElement.parentElement.scrollHeight;">` +
-                        `${htmlContent}</div>`;
+                        tempDiv.innerHTML + copyBtns + `</div>`;
                 } else {
-                    messageContent = `<div class="message-content">${htmlContent}</div>`;
+                    messageContent = `<div class="message-content">${tempDiv.innerHTML}${copyBtns}</div>`;
                 }
             } else if (sender === 'user') {
                 // Display user messages as plain text only
@@ -778,6 +961,41 @@
                         setTimeout(() => {
                             smoothScrollToBottom(messagesContainer);
                         }, 100);
+                    };
+                }
+            }
+            
+            // Add copy markdown/plain event listeners for assistant messages
+            if (sender === 'assistant' && type !== 'error' && type !== 'success') {
+                const markdownBtn = messageDiv.querySelector('.copy-markdown-btn');
+                const plainBtn = messageDiv.querySelector('.copy-plain-btn');
+                if (markdownBtn) {
+                    markdownBtn.onclick = function(e) {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(rawMarkdown);
+                        markdownBtn.classList.add('copied');
+                        setTimeout(() => { markdownBtn.classList.remove('copied'); }, 1200);
+                    };
+                }
+                if (plainBtn) {
+                    plainBtn.onclick = function(e) {
+                        e.stopPropagation();
+                        // Remove markdown formatting for plain text
+                        let plain = rawMarkdown
+                            .replace(/```[\s\S]*?```/g, m => m.replace(/```/g, ''))
+                            .replace(/`([^`]+)`/g, '$1')
+                            .replace(/\*\*([^*]+)\*\*/g, '$1')
+                            .replace(/\*([^*]+)\*/g, '$1')
+                            .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+                            .replace(/\!\[(.*?)\]\(.*?\)/g, '')
+                            .replace(/#+\s/g, '')
+                            .replace(/\n{2,}/g, '\n')
+                            .replace(/^- /gm, '')
+                            .replace(/> /g, '')
+                            .replace(/\|/g, '');
+                        navigator.clipboard.writeText(plain);
+                        plainBtn.classList.add('copied');
+                        setTimeout(() => { plainBtn.classList.remove('copied'); }, 1200);
                     };
                 }
             }
@@ -986,23 +1204,42 @@
                 return;
             }
             
-            // Add loading state to upload button
-            const uploadBtn = document.querySelector('#imageUploadModal .btn:nth-child(3)');
-            uploadBtn.classList.add('loading');
-            uploadBtn.disabled = true;
+            // Add loading state to upload button - find the specific upload button
+            const uploadBtn = document.querySelector('#imageUploadModal button[onclick="uploadImage()"]');
+            if (uploadBtn) {
+                uploadBtn.classList.add('loading');
+                uploadBtn.disabled = true;
+                uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+            }
             
             const formData = new FormData();
             formData.append('image', file);
             
+            // Use regular fetch since upload doesn't require premium auth
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            
             fetch('/upload_image', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                signal: controller.signal
             })
-            .then(response => response.json())
+            .then(response => {
+                clearTimeout(timeoutId); // Clear timeout on successful response
+                console.log('Upload response status:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
+                console.log('Upload response data:', data);
                 // Remove loading state
-                uploadBtn.classList.remove('loading');
-                uploadBtn.disabled = false;
+                if (uploadBtn) {
+                    uploadBtn.classList.remove('loading');
+                    uploadBtn.disabled = false;
+                    uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
+                }
                 
                 if (data.success) {
                     currentImageData = data.image;
@@ -1071,15 +1308,32 @@
                     messageInput.parentElement.appendChild(indicator);
                 } else {
                     addMessage('assistant', `Error: ${data.error}`, 'error');
+                    hideImageUpload();
                 }
                 document.getElementById('imageFile').value = '';
             })
             .catch(error => {
-                // Remove loading state
-                uploadBtn.classList.remove('loading');
-                uploadBtn.disabled = false;
+                clearTimeout(timeoutId); // Clear timeout on error
+                console.error('Upload error:', error);
                 
-                addMessage('assistant', `Error: ${error.message}`, 'error');
+                // Remove loading state
+                if (uploadBtn) {
+                    uploadBtn.classList.remove('loading');
+                    uploadBtn.disabled = false;
+                    uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
+                }
+                
+                let errorMessage = 'Error uploading image';
+                if (error.name === 'AbortError') {
+                    errorMessage = 'Upload timed out. Please try again with a smaller image.';
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Network error. Please check your connection and try again.';
+                } else {
+                    errorMessage = `Error uploading image: ${error.message}`;
+                }
+                
+                addMessage('assistant', errorMessage, 'error');
+                hideImageUpload();
                 document.getElementById('imageFile').value = '';
             });
         }
@@ -1674,6 +1928,83 @@
             // Store the current conversation ID for sending messages
             window.currentConversationId = conversationId;
         }
+
+        function enhanceAllAssistantMessagesWithCopy() {
+            const assistantMessages = document.querySelectorAll('.message.assistant .message-content');
+            assistantMessages.forEach(msgContent => {
+                // Avoid double-enhancing
+                if (msgContent.querySelector('.copy-btn-bar')) return;
+                // Get the raw markdown from a data attribute if present, else try to reconstruct
+                let rawMarkdown = msgContent.textContent || '';
+                // Try to get the markdown from a hidden element if you store it, else fallback to textContent
+                // Add copy code buttons to code blocks
+                const codeBlocks = msgContent.querySelectorAll('pre > code');
+                codeBlocks.forEach((codeBlock, idx) => {
+                    const pre = codeBlock.parentElement;
+                    if (pre.querySelector('.copy-code-btn')) return;
+                    const btn = document.createElement('button');
+                    btn.className = 'copy-code-btn btn';
+                    btn.title = 'Copy code';
+                    btn.innerHTML = '<i class="fas fa-copy"></i>';
+                    btn.onclick = function(e) {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(codeBlock.textContent);
+                        btn.classList.add('copied');
+                        setTimeout(() => { btn.classList.remove('copied'); }, 1200);
+                    };
+                    pre.style.position = 'relative';
+                    btn.style.position = 'absolute';
+                    btn.style.top = '8px';
+                    btn.style.right = '8px';
+                    btn.style.zIndex = '2';
+                    pre.appendChild(btn);
+                });
+                // Add copy markdown and plain text buttons at the bottom right
+                const copyBtns = document.createElement('div');
+                copyBtns.className = 'copy-btn-bar copy-btn-bar-bottom';
+                const markdownBtn = document.createElement('button');
+                markdownBtn.className = 'copy-markdown-btn btn';
+                markdownBtn.title = 'Copy Markdown';
+                markdownBtn.innerHTML = '<i class="fas fa-copy"></i>';
+                const plainBtn = document.createElement('button');
+                plainBtn.className = 'copy-plain-btn btn';
+                plainBtn.title = 'Copy Plain Text';
+                plainBtn.innerHTML = '<i class="fas fa-file-alt"></i>';
+                copyBtns.appendChild(markdownBtn);
+                copyBtns.appendChild(plainBtn);
+                msgContent.appendChild(copyBtns);
+                // Markdown copy: fallback to textContent if no raw markdown
+                markdownBtn.onclick = function(e) {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(rawMarkdown);
+                    markdownBtn.classList.add('copied');
+                    setTimeout(() => { markdownBtn.classList.remove('copied'); }, 1200);
+                };
+                plainBtn.onclick = function(e) {
+                    e.stopPropagation();
+                    // Remove markdown formatting for plain text
+                    let plain = rawMarkdown
+                        .replace(/```[\s\S]*?```/g, m => m.replace(/```/g, ''))
+                        .replace(/`([^`]+)`/g, '$1')
+                        .replace(/\*\*([^*]+)\*\*/g, '$1')
+                        .replace(/\*([^*]+)\*/g, '$1')
+                        .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+                        .replace(/\!\[(.*?)\]\(.*?\)/g, '')
+                        .replace(/#+\s/g, '')
+                        .replace(/\n{2,}/g, '\n')
+                        .replace(/^- /gm, '')
+                        .replace(/> /g, '')
+                        .replace(/\|/g, '');
+                    navigator.clipboard.writeText(plain);
+                    plainBtn.classList.add('copied');
+                    setTimeout(() => { plainBtn.classList.remove('copied'); }, 1200);
+                };
+            });
+        }
+        // Call after history is loaded
+        window.addEventListener('load', () => {
+            setTimeout(enhanceAllAssistantMessagesWithCopy, 500);
+        });
     </script>
     <!-- Firebase config (do not commit this file) -->
     <script src="/firebase-config.js"></script>

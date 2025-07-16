@@ -290,6 +290,9 @@ def chat_stream():
                         if chunk:
                             full_response += chunk
                             yield f"data: {json.dumps({'chunk': chunk, 'model': model, 'conversation_id': conversation_id})}\n\n"
+                        else:
+                            # Send empty chunk to frontend for thinking indicator
+                            yield f"data: {json.dumps({'chunk': '', 'model': model, 'conversation_id': conversation_id})}\n\n"
                     
                     # Save the complete conversation after streaming is done
                     add_firestore_message(user_key, conversation_id, {'role': 'user', 'content': message})
@@ -316,7 +319,7 @@ def chat_stream():
 
         return app.response_class(
             generate(),
-            mimetype='text/plain',
+            mimetype='text/event-stream',
             headers={
                 'Cache-Control': 'no-cache',
                 'X-Accel-Buffering': 'no'
@@ -420,16 +423,26 @@ def clear_context():
 @app.route('/upload_image', methods=['POST'])
 def upload_image():
     try:
+        logger.info("Image upload request received")
+        
         if 'image' not in request.files:
+            logger.error("No image file in request")
             return jsonify({'error': 'No image file provided'}), 400
+            
         file = request.files['image']
+        logger.info(f"File received: {file.filename}, size: {file.content_length if hasattr(file, 'content_length') else 'unknown'}")
+        
         if file.filename == '':
+            logger.error("Empty filename")
             return jsonify({'error': 'No image file selected'}), 400
         
         # Validate file type - only accept image files
         allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
         file_extension = os.path.splitext(file.filename.lower())[1]
+        logger.info(f"File extension: {file_extension}")
+        
         if file_extension not in allowed_extensions:
+            logger.error(f"Invalid file extension: {file_extension}")
             return jsonify({'error': 'Only image files are allowed. Please upload a JPEG, PNG, GIF, WebP, or BMP file.'}), 400
         
         # Validate file size (max 10MB)
@@ -437,26 +450,42 @@ def upload_image():
         file.seek(0, 2)  # Seek to end
         file_size = file.tell()
         file.seek(0)  # Reset to beginning
+        logger.info(f"File size: {file_size} bytes")
         
         if file_size > max_size:
+            logger.error(f"File too large: {file_size} bytes")
             return jsonify({'error': 'File size too large. Please upload an image smaller than 10MB.'}), 400
         
         # Additional validation: check if it's actually an image by reading first few bytes
         try:
-            image = Image.open(file)
+            logger.info("Validating image with PIL")
+            image_data_for_validation = file.read()
+            file.seek(0)  # Reset after reading for validation
+            
+            # Use BytesIO to avoid file pointer issues
+            image = Image.open(io.BytesIO(image_data_for_validation))
             image.verify()  # Verify it's a valid image
-            file.seek(0)  # Reset to beginning after verification
-        except Exception:
+            logger.info(f"Image validated: {image.format}, {image.size}")
+        except Exception as validation_error:
+            logger.error(f"Image validation failed: {validation_error}")
             return jsonify({'error': 'Invalid image file. Please upload a valid image.'}), 400
         
+        # Read the actual image data for encoding
+        file.seek(0)  # Reset to beginning
         image_data = file.read()
+        logger.info(f"Image data read: {len(image_data)} bytes")
+        
+        # Encode to base64
         image_base64 = base64.b64encode(image_data).decode('utf-8')
+        logger.info("Image successfully encoded to base64")
+        
         return jsonify({
             'success': True,
             'image': f'data:image/jpeg;base64,{image_base64}'
         })
+        
     except Exception as e:
-        logger.error(f"Error uploading image: {e}")
+        logger.error(f"Error uploading image: {e}", exc_info=True)
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
 @app.route('/history', methods=['GET'])

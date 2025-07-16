@@ -279,6 +279,45 @@ body::before {
     transform: scale(0.95);
 }
 
+.upload-btn {
+    background: linear-gradient(135deg, #2ecc40, #27ae60);
+    border: none;
+    color: white;
+    padding: 12px 16px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    margin-right: 8px;
+}
+
+.upload-btn::before {
+    content: none !important;
+}
+
+.upload-btn:hover:not(:disabled) {
+    transform: scale(1.15);
+    background: linear-gradient(135deg, #27ae60, #2ecc40);
+    box-shadow: 0 8px 25px rgba(46, 204, 64, 0.4);
+}
+
+.upload-btn:active:not(:disabled) {
+    transform: scale(0.9);
+}
+
+.upload-btn:disabled {
+    background: #ccc;
+    color: #666;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.upload-btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
 /* Modal animations */
 .modal-overlay {
     animation: fadeIn 0.2s ease-out;
@@ -1767,6 +1806,12 @@ body.dark-mode .topbar-mobile {
         border-radius: 10px;
         margin-left: 4px;
     }
+    .upload-btn {
+        font-size: 1.2rem;
+        padding: 0.6rem 1rem;
+        border-radius: 10px;
+        margin-right: 4px;
+    }
     .message-content {
         font-size: 1.08em !important;
         padding: 2vw 2vw !important;
@@ -1882,6 +1927,31 @@ body.dark-mode .send-btn:hover, body.dark-mode .send-btn:focus {
 }
 body.dark-mode .send-btn:active {
     transform: scale(0.9);
+}
+
+body.dark-mode .upload-btn {
+    background: linear-gradient(135deg, #2ecc40, #27ae60) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px var(--color-shadow) !important;
+    border: none !important;
+}
+
+body.dark-mode .upload-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #27ae60, #2ecc40) !important;
+    color: #fff !important;
+    box-shadow: 0 8px 25px rgba(46, 204, 64, 0.4) !important;
+    transform: scale(1.15);
+}
+
+body.dark-mode .upload-btn:active:not(:disabled) {
+    transform: scale(0.9);
+}
+
+body.dark-mode .upload-btn:disabled {
+    background: #33374a !important;
+    color: #666 !important;
+    cursor: not-allowed;
+    opacity: 0.6;
 }
 
 body.dark-mode .chat-input {

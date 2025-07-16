@@ -31,6 +31,9 @@ A modern web-based AI assistant, featuring multiple AI models for chat and image
 - **GPT o3 High** - High-performance language model
 - **Gemini 2.5 Pro** - Google's latest AI model
 - **Grok 4** - xAI's latest reasoning model
+- **DeepSeek R1** - Advanced reasoning model (no image analysis)
+- **Meta: Llama 4 Maverick** - Meta's latest multimodal model with vision
+- **Microsoft: Phi 4 Multimodal Instruct** - Microsoft's advanced multimodal model
 - **Perplexity Sonar Reasoning Pro** - Web search capabilities
 - **GPT o3 Mini Online** - Fast and efficient model
 - **GPT 4o Mini Search** - Free model with web search capabilities
