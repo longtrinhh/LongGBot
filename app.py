@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, make_response
+from flask import Flask, render_template, request, jsonify, make_response
 import json
 import asyncio
 import logging
@@ -7,7 +7,7 @@ import io
 from ai_client import ask_ai, ask_ai_stream
 from ai_image_client import AIImageClient
 from shared_context import (
-    get_user_context, add_question_to_context, clear_user_context, get_user_model, set_user_model, get_full_conversation,
+    get_user_model, set_user_model, clear_user_context,
     get_firestore_conversations_for_user, get_firestore_conversation, add_firestore_message, create_firestore_conversation, delete_firestore_conversation
 )
 from config import CHAT_MODELS, IMAGE_GEN_MODELS, MODEL_NAME, FLASK_SECRET_KEY
@@ -15,16 +15,13 @@ import uuid
 import os
 import hashlib
 from PIL import Image
-import click
 
 app = Flask(__name__)
-app.secret_key = FLASK_SECRET_KEY  # Secure secret key
+app.secret_key = FLASK_SECRET_KEY
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize image client
 image_client = AIImageClient()
 
 def load_valid_codes():
@@ -40,10 +37,8 @@ def hash_code(code):
     return hashlib.sha256(code.encode('utf-8')).hexdigest()
 
 def get_premium_code_hash():
-    # Try to get hash from cookie, header, or request
     code_hash = request.cookies.get('premium_code_hash')
     if not code_hash:
-        # If code is sent directly, hash it
         code = request.headers.get('X-Access-Code') or request.args.get('code') or (request.json.get('code') if request.is_json and request.json else None)
         if code and code in VALID_CODES:
             code_hash = hash_code(code)
@@ -52,16 +47,11 @@ def get_premium_code_hash():
 def get_user_key():
     code_hash = get_premium_code_hash()
     if code_hash and code_hash in [hash_code(c) for c in VALID_CODES]:
-        return code_hash  # Use hash as key for premium users
-    return request.cookies.get('user_id')  # Use user_id for free users
+        return code_hash
+    return request.cookies.get('user_id')
 
 def run_async(coro):
     return asyncio.run(coro)
-
-# Helper to check if user has premium access (code sent from frontend)
-def has_premium_access():
-    code = request.headers.get('X-Access-Code') or request.args.get('code') or (request.json.get('code') if request.is_json and request.json else None)
-    return code in VALID_CODES
 
 @app.route('/')
 def index():
@@ -79,7 +69,7 @@ def index():
         premium=premium
     ))
     if not request.cookies.get('user_id'):
-        resp.set_cookie('user_id', user_id, max_age=60*60*24*365)  # 1 year
+        resp.set_cookie('user_id', user_id, max_age=60*60*24*365)
     if code_hash:
         resp.set_cookie('premium_code_hash', code_hash, max_age=60*60*24*365)
     return resp
@@ -101,14 +91,10 @@ def validate_code():
 def list_conversations():
     user_key = get_user_key()
     conversations = get_firestore_conversations_for_user(user_key)
-    # Sort by creation time (newest first)
     def get_sort_key(conv):
-        # Prefer 'created_at', fallback to 'last_updated', fallback to conversation_id
         return conv.get('created_at') or conv.get('last_updated') or conv.get('conversation_id')
-    conversations = sorted(conversations, key=get_sort_key, reverse=False)  # Oldest first
-    # To get newest first, reverse the list
+    conversations = sorted(conversations, key=get_sort_key, reverse=False)
     conversations = conversations[::1]
-    # Return only summary info (id, title, first message, last updated)
     summaries = []
     for conv in conversations:
         messages = conv.get('messages', [])
@@ -124,18 +110,14 @@ def list_conversations():
 @app.route('/conversations', methods=['POST'])
 def new_conversation():
     user_key = get_user_key()
-    print('DEBUG /conversations user_key:', user_key)
     if not user_key:
         return jsonify({'error': 'User not identified. Please reload the page.'}), 400
     data = request.get_json() or {}
     title = data.get('title')
-    print('DEBUG /conversations title:', title)
     try:
         conv_id = create_firestore_conversation(user_key, title)
-        print('DEBUG /conversations conv_id:', conv_id)
         return jsonify({'conversation_id': conv_id})
     except Exception as e:
-        print('ERROR /conversations exception:', str(e))
         return jsonify({'error': f'Exception: {str(e)}'}), 500
 
 @app.route('/conversations/<conversation_id>', methods=['GET'])
@@ -178,13 +160,12 @@ def chat():
         if not message:
             return jsonify({'error': 'Message cannot be empty'}), 400
         if premium:
-            model = get_user_model(user_key, 'chat') or 'claude-sonnet-4-20250514-thinking:safe'
+            model = get_user_model(user_key, 'chat') or 'claude-sonnet-4-20250514-thinking'
         else:
             model = 'gpt-4o-mini-search-preview-2025-03-11'
         if conversation_id:
             context = get_firestore_conversation(user_key, conversation_id)
         else:
-            # Use the latest conversation or create a new one
             conversations = get_firestore_conversations_for_user(user_key)
             if conversations:
                 conversation_id = conversations[0]['conversation_id']
@@ -192,7 +173,6 @@ def chat():
             else:
                 conversation_id = create_firestore_conversation(user_key)
                 context = []
-        # Check if this is an image generation request
         image_keywords = [
             "generate image", "tạo ảnh", "tạo tranh", "tạo logo", "gen image", 
             "gen pic", "gen photo", "gen logo", "create image", "create pic", 
@@ -203,7 +183,6 @@ def chat():
             if not premium:
                 return jsonify({'error': 'Image generation is only available for premium users.'}), 403
             return jsonify({'type': 'image_request', 'prompt': message, 'conversation_id': conversation_id})
-        # Convert base64 image data to bytes if present
         image_bytes = None
         if image_data:
             try:
@@ -213,7 +192,6 @@ def chat():
             except Exception as e:
                 logger.error(f"Error decoding image data: {e}")
                 return jsonify({'error': 'Invalid image data'}), 400
-        # Call AI with image data if present
         response = run_async(ask_ai(message, model, context, image_bytes))
         add_firestore_message(user_key, conversation_id, {'role': 'user', 'content': message})
         add_firestore_message(user_key, conversation_id, {'role': 'assistant', 'content': response})
@@ -229,7 +207,6 @@ def chat():
 
 @app.route('/chat/stream', methods=['POST'])
 def chat_stream():
-    """Streaming chat endpoint."""
     try:
         data = request.get_json()
         message = data.get('message', '').strip()
@@ -242,14 +219,13 @@ def chat_stream():
             return jsonify({'error': 'Message cannot be empty'}), 400
             
         if premium:
-            model = get_user_model(user_key, 'chat') or 'claude-sonnet-4-20250514-thinking:safe'
+            model = get_user_model(user_key, 'chat') or 'claude-sonnet-4-20250514-thinking'
         else:
             model = 'gpt-4o-mini-search-preview-2025-03-11'
             
         if conversation_id:
             context = get_firestore_conversation(user_key, conversation_id)
         else:
-            # Use the latest conversation or create a new one
             conversations = get_firestore_conversations_for_user(user_key)
             if conversations:
                 conversation_id = conversations[0]['conversation_id']
@@ -258,7 +234,6 @@ def chat_stream():
                 conversation_id = create_firestore_conversation(user_key)
                 context = []
                 
-        # Check if this is an image generation request
         image_keywords = [
             "generate image", "tạo ảnh", "tạo tranh", "tạo logo", "gen image", 
             "gen pic", "gen photo", "gen logo", "create image", "create pic", 
@@ -270,7 +245,6 @@ def chat_stream():
                 return jsonify({'error': 'Image generation is only available for premium users.'}), 403
             return jsonify({'type': 'image_request', 'prompt': message, 'conversation_id': conversation_id})
             
-        # Convert base64 image data to bytes if present
         image_bytes = None
         if image_data:
             try:
@@ -291,15 +265,12 @@ def chat_stream():
                             full_response += chunk
                             yield f"data: {json.dumps({'chunk': chunk, 'model': model, 'conversation_id': conversation_id})}\n\n"
                         else:
-                            # Send empty chunk to frontend for thinking indicator
                             yield f"data: {json.dumps({'chunk': '', 'model': model, 'conversation_id': conversation_id})}\n\n"
                     
-                    # Save the complete conversation after streaming is done
                     add_firestore_message(user_key, conversation_id, {'role': 'user', 'content': message})
                     add_firestore_message(user_key, conversation_id, {'role': 'assistant', 'content': full_response})
                     yield f"data: {json.dumps({'done': True, 'model': model, 'conversation_id': conversation_id})}\n\n"
                 
-                # Run the async generator
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
@@ -410,6 +381,14 @@ def set_model():
         logger.error(f"Error setting model: {e}")
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
+@app.route('/cancel_stream', methods=['POST'])
+def cancel_stream():
+    try:
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error canceling stream: {e}")
+        return jsonify({'error': f'Error: {str(e)}'}), 500
+
 @app.route('/clear_context', methods=['POST'])
 def clear_context():
     try:
@@ -423,61 +402,41 @@ def clear_context():
 @app.route('/upload_image', methods=['POST'])
 def upload_image():
     try:
-        logger.info("Image upload request received")
-        
         if 'image' not in request.files:
-            logger.error("No image file in request")
             return jsonify({'error': 'No image file provided'}), 400
             
         file = request.files['image']
-        logger.info(f"File received: {file.filename}, size: {file.content_length if hasattr(file, 'content_length') else 'unknown'}")
         
         if file.filename == '':
-            logger.error("Empty filename")
             return jsonify({'error': 'No image file selected'}), 400
         
-        # Validate file type - only accept image files
         allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
         file_extension = os.path.splitext(file.filename.lower())[1]
-        logger.info(f"File extension: {file_extension}")
         
         if file_extension not in allowed_extensions:
-            logger.error(f"Invalid file extension: {file_extension}")
             return jsonify({'error': 'Only image files are allowed. Please upload a JPEG, PNG, GIF, WebP, or BMP file.'}), 400
         
-        # Validate file size (max 10MB)
-        max_size = 10 * 1024 * 1024  # 10MB
-        file.seek(0, 2)  # Seek to end
+        max_size = 10 * 1024 * 1024
+        file.seek(0, 2)
         file_size = file.tell()
-        file.seek(0)  # Reset to beginning
-        logger.info(f"File size: {file_size} bytes")
+        file.seek(0)
         
         if file_size > max_size:
-            logger.error(f"File too large: {file_size} bytes")
             return jsonify({'error': 'File size too large. Please upload an image smaller than 10MB.'}), 400
         
-        # Additional validation: check if it's actually an image by reading first few bytes
         try:
-            logger.info("Validating image with PIL")
             image_data_for_validation = file.read()
-            file.seek(0)  # Reset after reading for validation
+            file.seek(0)
             
-            # Use BytesIO to avoid file pointer issues
             image = Image.open(io.BytesIO(image_data_for_validation))
-            image.verify()  # Verify it's a valid image
-            logger.info(f"Image validated: {image.format}, {image.size}")
+            image.verify()
         except Exception as validation_error:
-            logger.error(f"Image validation failed: {validation_error}")
             return jsonify({'error': 'Invalid image file. Please upload a valid image.'}), 400
         
-        # Read the actual image data for encoding
-        file.seek(0)  # Reset to beginning
+        file.seek(0)
         image_data = file.read()
-        logger.info(f"Image data read: {len(image_data)} bytes")
         
-        # Encode to base64
         image_base64 = base64.b64encode(image_data).decode('utf-8')
-        logger.info("Image successfully encoded to base64")
         
         return jsonify({
             'success': True,

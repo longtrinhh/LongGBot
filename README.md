@@ -4,6 +4,14 @@ A modern web-based AI assistant, featuring multiple AI models for chat and image
 
 ## Change Log
 
+### V1.3
+- **Stop Button**: Added ability to stop AI responses mid-way through streaming
+- **GPT-5 Model**: Added GPT-5 with vision support for premium users
+- **Enhanced UI**: Stop button replaces send button during streaming for better UX
+- **Improved Responsiveness**: Better mobile experience with responsive stop button
+- **Dark Mode Support**: Stop button fully supports dark mode theme
+- **Backend Integration**: Added cancellation endpoint for future backend improvements
+
 ### V1.2
 - **Real-time Streaming**: Added streaming support for all chat models with real-time response display
 - **Dark Mode Improvements**: Fixed model selector hover text visibility in dark mode
@@ -31,6 +39,7 @@ A modern web-based AI assistant, featuring multiple AI models for chat and image
 - **GPT o3 High** - High-performance language model
 - **Gemini 2.5 Pro** - Google's latest AI model
 - **Grok 4** - xAI's latest reasoning model
+- **GPT 5** - OpenAI's latest model with vision support
 - **DeepSeek R1** - Advanced reasoning model (no image analysis)
 - **Meta: Llama 4 Maverick** - Meta's latest multimodal model with vision
 - **Microsoft: Phi 4 Multimodal Instruct** - Microsoft's advanced multimodal model
@@ -53,6 +62,7 @@ A modern web-based AI assistant, featuring multiple AI models for chat and image
 
 ### 💬 Chat Features
 - **Real-time Streaming** - Instant character-by-character response display
+- **Response Control** - Stop button to cancel AI responses mid-way
 - **Conversation History** - Maintains context across sessions
 - **Model Switching** - Easy switching between different AI models
 - **Dark Mode Support** - Full dark mode with proper text visibility
@@ -97,6 +107,12 @@ A modern web-based AI assistant, featuring multiple AI models for chat and image
 2. Enter a description of the image you want
 3. Select an image generation model
 4. Click "Generate" to create the image
+
+### Stopping AI Responses
+1. During streaming, the send button becomes a red stop button
+2. Click the stop button to immediately cancel the AI response
+3. A "Response stopped by user" message will appear
+4. The send button will return to normal state
 
 ### Image Upload and Analysis
 1. Click "Upload Image" in the sidebar

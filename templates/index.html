@@ -155,6 +155,9 @@
                         <button class="send-btn" onclick="sendMessage()" id="sendBtn">
                             <i class="fas fa-paper-plane"></i>
                         </button>
+                        <button class="stop-btn" onclick="stopResponse()" id="stopBtn">
+                            <i class="fas fa-stop"></i>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -349,10 +352,11 @@
         window.addEventListener('load', createParticles);
 
         const PREMIUM_MODELS = [
-            "claude-sonnet-4-20250514-thinking:safe",
+            "claude-sonnet-4-20250514-thinking",
             "o3-high",
             "gemini-2.5-pro-preview-05-06",
             "grok-4-0709",
+            "gpt-5-chat-latest",
             "deepseek-r1-0528",
             "llama-4-maverick-17b-128e-instruct",
             "phi-4-multimodal-instruct",
@@ -477,16 +481,52 @@
             }
         }
 
+        // Global variable to track current stream reader
+        let currentStreamReader = null;
+        let isStreaming = false;
+
+        function stopResponse() {
+            if (currentStreamReader && isStreaming) {
+                currentStreamReader.cancel();
+                currentStreamReader = null;
+                isStreaming = false;
+                
+                // Reset UI
+                const sendBtn = document.getElementById('sendBtn');
+                const stopBtn = document.getElementById('stopBtn');
+                sendBtn.classList.remove('loading');
+                sendBtn.disabled = false;
+                sendBtn.style.display = 'flex';
+                stopBtn.style.display = 'none';
+                
+                // Call backend to notify cancellation
+                fetchWithCode('/cancel_stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                }).catch(error => {
+                    console.log('Error notifying backend of cancellation:', error);
+                });
+                
+                // Add a message indicating the response was stopped
+                addMessage('assistant', '<span style="color: #ff6b6b; font-style: italic;"><i class="fas fa-stop"></i> Response stopped by user.</span>', 'stopped');
+            }
+        }
+
         function sendMessage() {
             console.log('sendMessage called');
             const input = document.getElementById('messageInput');
             const sendBtn = document.getElementById('sendBtn');
+            const stopBtn = document.getElementById('stopBtn');
             const message = input.value.trim();
             if (!message) return;
             
-            // Add loading state to send button
+            // Add loading state to send button and show stop button
             sendBtn.classList.add('loading');
             sendBtn.disabled = true;
+            sendBtn.style.display = 'none';
+            stopBtn.style.display = 'flex';
+            isStreaming = true;
             
             // Add the user message
             addMessage('user', message);
@@ -546,6 +586,7 @@
                 let thinkingShown = false;
                 
                 const reader = response.body.getReader();
+                currentStreamReader = reader;
                 const decoder = new TextDecoder();
                 
                 function readStream() {
@@ -554,6 +595,10 @@
                             // Remove loading state
                             sendBtn.classList.remove('loading');
                             sendBtn.disabled = false;
+                            sendBtn.style.display = 'flex';
+                            stopBtn.style.display = 'none';
+                            isStreaming = false;
+                            currentStreamReader = null;
                             // Add copy buttons to the just-finished message
                             setTimeout(enhanceAllAssistantMessagesWithCopy, 0);
                             return;
@@ -571,6 +616,10 @@
                                         // Remove loading state
                                         sendBtn.classList.remove('loading');
                                         sendBtn.disabled = false;
+                                        sendBtn.style.display = 'flex';
+                                        stopBtn.style.display = 'none';
+                                        isStreaming = false;
+                                        currentStreamReader = null;
                                         addMessage('assistant', `Error: ${data.error}`, 'error');
                                         return;
                                     } else if (data.chunk !== undefined) {
@@ -616,6 +665,10 @@
                                         // Remove loading state
                                         sendBtn.classList.remove('loading');
                                         sendBtn.disabled = false;
+                                        sendBtn.style.display = 'flex';
+                                        stopBtn.style.display = 'none';
+                                        isStreaming = false;
+                                        currentStreamReader = null;
                                         // Add copy buttons to the just-finished message (only the last one for efficiency)
                                         setTimeout(() => {
                                             const allAssistantMessages = document.querySelectorAll('.message.assistant .message-content');
@@ -704,6 +757,10 @@
                 // Remove loading state
                 sendBtn.classList.remove('loading');
                 sendBtn.disabled = false;
+                sendBtn.style.display = 'flex';
+                stopBtn.style.display = 'none';
+                isStreaming = false;
+                currentStreamReader = null;
                 
                 if (thinkingDiv && thinkingDiv.parentNode) thinkingDiv.parentNode.removeChild(thinkingDiv);
                 addMessage('assistant', `Error: ${error.message}`, 'error');

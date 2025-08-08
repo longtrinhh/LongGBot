@@ -279,6 +279,48 @@ body::before {
     transform: scale(0.95);
 }
 
+.stop-btn {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2em;
+    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.stop-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+.stop-btn:hover::before {
+    left: 100%;
+}
+
+.stop-btn:hover, .stop-btn:focus {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+}
+
+.stop-btn:active {
+    transform: scale(0.95);
+}
+
 .upload-btn {
     background: linear-gradient(135deg, #2ecc40, #27ae60);
     border: none;
@@ -668,6 +710,7 @@ body::before {
     border-radius: 12px;
     padding: 12px 16px;
     font-size: 0.9rem;
+    font-family: Arial, sans-serif;
     width: 100%;
     resize: none;
     outline: none;
@@ -1793,6 +1836,7 @@ body.dark-mode .topbar-mobile {
         flex: 1;
         min-height: 40px;
         font-size: 1rem;
+        font-family: Arial, sans-serif;
         border-radius: 10px;
         padding: 10px 12px;
         border: 1.5px solid var(--color-input-border) !important;
@@ -1954,10 +1998,30 @@ body.dark-mode .upload-btn:disabled {
     opacity: 0.6;
 }
 
+body.dark-mode .stop-btn {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a52) !important;
+    color: white !important;
+    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4) !important;
+}
+
+body.dark-mode .stop-btn:hover, body.dark-mode .stop-btn:focus {
+    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.5) !important;
+}
+
+/* Mobile styles for stop button */
+@media (max-width: 700px) {
+    .stop-btn {
+        width: 45px;
+        height: 45px;
+        font-size: 1.1em;
+    }
+}
+
 body.dark-mode .chat-input {
     background: #23262f !important;
     color: #f1f1f1 !important;
     border: 1.5px solid #33374a !important;
+    font-family: Arial, sans-serif !important;
 }
 
 body.dark-mode .btn,
