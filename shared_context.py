@@ -99,9 +99,35 @@ def remove_think_block(text):
 def get_full_conversation(user_key: str) -> List[Dict]:
     return user_contexts.get(str(user_key), [])
 
+# Simple cache for conversations (invalidate when new conversation created/deleted)
+_conversation_cache = {}
+_cache_timeout = 300  # 5 minutes
+
 def get_firestore_conversations_for_user(user_id):
+    import time
+    cache_key = f"conversations_{user_id}"
+    current_time = time.time()
+    
+    # Check cache first
+    if cache_key in _conversation_cache:
+        cached_data, timestamp = _conversation_cache[cache_key]
+        if current_time - timestamp < _cache_timeout:
+            return cached_data
+    
+    # Fetch from Firestore
     docs = firestore_client.collection(FIRESTORE_COLLECTION).where("user_id", "==", user_id).stream()
-    return [doc.to_dict() for doc in docs]
+    conversations = [doc.to_dict() for doc in docs]
+    
+    # Cache the result
+    _conversation_cache[cache_key] = (conversations, current_time)
+    
+    return conversations
+
+def _invalidate_user_cache(user_id):
+    """Invalidate cached conversations for a user"""
+    cache_key = f"conversations_{user_id}"
+    if cache_key in _conversation_cache:
+        del _conversation_cache[cache_key]
 
 def get_firestore_conversation(user_id, conversation_id):
     doc_ref = firestore_client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
@@ -112,20 +138,35 @@ def get_firestore_conversation(user_id, conversation_id):
 
 def add_firestore_message(user_id, conversation_id, message):
     doc_ref = firestore_client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
-    doc = doc_ref.get()
-    if doc.exists:
-        messages = doc.to_dict().get("messages", [])
-    else:
-        messages = []
-    messages.append(message)
-    doc_ref.set({
-        "user_id": user_id,
-        "conversation_id": conversation_id,
-        "messages": messages
-    })
+    
+    # Use atomic update to append message - more efficient than read-modify-write
+    try:
+        from google.cloud.firestore import ArrayUnion
+        doc_ref.update({
+            "messages": ArrayUnion([message]),
+            "last_updated": datetime.utcnow().isoformat() + 'Z'
+        })
+    except Exception:
+        # Fallback to read-modify-write if document doesn't exist
+        doc = doc_ref.get()
+        if doc.exists:
+            messages = doc.to_dict().get("messages", [])
+        else:
+            messages = []
+        messages.append(message)
+        doc_ref.set({
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "messages": messages,
+            "last_updated": datetime.utcnow().isoformat() + 'Z'
+        })
 
 def create_firestore_conversation(user_id, title=None):
     import uuid
+    
+    # Invalidate cache when creating new conversation
+    _invalidate_user_cache(user_id)
+    
     is_premium = isinstance(user_id, str) and len(user_id) == 64
     max_convs = 10 if is_premium else 2
     docs = list(firestore_client.collection(FIRESTORE_COLLECTION).where("user_id", "==", user_id).stream())
@@ -148,6 +189,9 @@ def create_firestore_conversation(user_id, title=None):
     return conv_id
 
 def delete_firestore_conversation(user_id, conversation_id):
+    # Invalidate cache when deleting conversation
+    _invalidate_user_cache(user_id)
+    
     doc_ref = firestore_client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
     doc_ref.delete()
 

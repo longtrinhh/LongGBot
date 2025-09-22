@@ -69,29 +69,31 @@ body::before {
     pointer-events: none;
     z-index: -1;
     animation: backgroundFloat 20s ease-in-out infinite;
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
 }
 
 @keyframes backgroundFloat {
     0%, 100% {
-        transform: translateY(0px) rotate(0deg);
+        transform: translate3d(0, 0, 0) rotate(0deg);
     }
     33% {
-        transform: translateY(-20px) rotate(1deg);
+        transform: translate3d(0, -20px, 0) rotate(1deg);
     }
     66% {
-        transform: translateY(10px) rotate(-1deg);
+        transform: translate3d(0, 10px, 0) rotate(-1deg);
     }
 }
 
-/* Animation keyframes */
+/* Animation keyframes optimized for hardware acceleration */
 @keyframes fadeInUp {
     from {
         opacity: 0;
-        transform: translateY(20px);
+        transform: translate3d(0, 20px, 0);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translate3d(0, 0, 0);
     }
 }
 
@@ -228,6 +230,8 @@ body::before {
     display: flex;
     align-items: flex-start;
     animation: fadeInUp 0.3s ease-out;
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
 }
 
 .message.user {
@@ -1193,7 +1197,8 @@ body.dark-mode .topbar-mobile {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
-    transform: translateZ(0);
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
 }
 
 .btn::before {
@@ -1212,7 +1217,7 @@ body.dark-mode .topbar-mobile {
 }
 
 .btn:hover, .btn:focus {
-    transform: translateY(-3px) scale(1.02);
+    transform: translate3d(0, -3px, 0) scale(1.02);
     box-shadow: 0 8px 25px rgba(0,0,0,0.15);
 }
 

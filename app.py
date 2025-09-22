@@ -44,9 +44,18 @@ def get_premium_code_hash():
             code_hash = hash_code(code)
     return code_hash
 
+# Cache hashed codes for better performance
+_HASHED_CODES_CACHE = None
+
+def get_hashed_codes():
+    global _HASHED_CODES_CACHE
+    if _HASHED_CODES_CACHE is None:
+        _HASHED_CODES_CACHE = {hash_code(c) for c in VALID_CODES}
+    return _HASHED_CODES_CACHE
+
 def get_user_key():
     code_hash = get_premium_code_hash()
-    if code_hash and code_hash in [hash_code(c) for c in VALID_CODES]:
+    if code_hash and code_hash in get_hashed_codes():
         return code_hash
     return request.cookies.get('user_id')
 
@@ -59,7 +68,7 @@ def index():
     code_hash = get_premium_code_hash()
     if not user_id:
         user_id = str(uuid.uuid4())
-    premium = code_hash and code_hash in [hash_code(c) for c in VALID_CODES]
+    premium = code_hash and code_hash in get_hashed_codes()
     user_key = code_hash if premium else user_id
     resp = make_response(render_template(
         'index.html',
@@ -418,17 +427,36 @@ def upload_image():
         if file_size > max_size:
             return jsonify({'error': 'File size too large. Please upload an image smaller than 10MB.'}), 400
         
-        try:
-            image_data_for_validation = file.read()
-            file.seek(0)
-            
-            image = Image.open(io.BytesIO(image_data_for_validation))
-            image.verify()
-        except Exception as validation_error:
-            return jsonify({'error': 'Invalid image file. Please upload a valid image.'}), 400
-        
         file.seek(0)
         image_data = file.read()
+        
+        # Validate and optimize image in one step
+        try:
+            img = Image.open(io.BytesIO(image_data))
+            
+            # Validate the image by getting its format
+            if img.format not in ['JPEG', 'PNG', 'GIF', 'WEBP', 'BMP']:
+                return jsonify({'error': 'Unsupported image format. Please upload a JPEG, PNG, GIF, WebP, or BMP file.'}), 400
+            
+            # Convert to RGB if necessary (this also validates the image)
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+                
+            # Resize if too large (max 1024x1024)
+            max_size = 1024
+            if img.width > max_size or img.height > max_size:
+                img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+            
+            # Compress and save optimized image
+            optimized_buffer = io.BytesIO()
+            img.save(optimized_buffer, format='JPEG', quality=85, optimize=True)
+            image_data = optimized_buffer.getvalue()
+            
+        except Exception as e:
+            logger.error(f"Image processing failed: {e}")
+            return jsonify({'error': 'Invalid image file. Please upload a valid image.'}), 400
         
         image_base64 = base64.b64encode(image_data).decode('utf-8')
         

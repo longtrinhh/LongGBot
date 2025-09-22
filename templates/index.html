@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
     <title>LongGBot Assistant</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v={{ range(1, 1000) | random }}" rel="stylesheet">
-    <link rel="icon" type="image/jpg" href="{{ url_for('static', filename='img/longgbot_log.jpg') }}">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v={% if config.ENV == 'development' %}{{ range(1, 1000) | random }}{% else %}1.0{% endif %}" rel="stylesheet">
+    <link rel="icon" type="image/jpg" href="{{ url_for('static', filename='img/longgbot_log.jpg') }}" sizes="32x32">
     <!-- Add minimal CSS for copy buttons -->
     <style>
         .copy-code-btn, .copy-markdown-btn, .copy-plain-btn {
@@ -295,6 +295,28 @@
         let currentImageModel = 'imagen-4.0-ultra-generate-exp-05-20';
         let currentChatModel = '{{ current_model }}';
 
+        // Performance optimizations: Cache DOM elements to avoid repeated queries
+        const cachedElements = {};
+        function getCachedElement(id) {
+            if (!cachedElements[id]) {
+                cachedElements[id] = document.getElementById(id);
+            }
+            return cachedElements[id];
+        }
+
+        // Debounce function for performance
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
         // Add subtle particle effect
         function createParticles() {
             const particlesContainer = document.createElement('div');
@@ -376,16 +398,16 @@
 
         // Move hideAllSelectors to the top to avoid reference errors
         function hideAllSelectors() {
-            document.getElementById('chatModelModal').style.display = 'none';
-            document.getElementById('imageModelModal').style.display = 'none';
-            document.getElementById('imageUploadModal').style.display = 'none';
-            document.getElementById('imageGeneratorModal').style.display = 'none';
+            getCachedElement('chatModelModal').style.display = 'none';
+            getCachedElement('imageModelModal').style.display = 'none';
+            getCachedElement('imageUploadModal').style.display = 'none';
+            getCachedElement('imageGeneratorModal').style.display = 'none';
         }
 
         // Helper function to hide sidebar on mobile when modals are opened
         function hideSidebarOnMobile() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
+            const sidebar = getCachedElement('sidebar');
+            const overlay = getCachedElement('sidebarOverlay');
             if (sidebar && window.innerWidth <= 700) {
                 sidebar.classList.remove('open');
                 if (overlay) overlay.style.display = 'none';
@@ -567,8 +589,8 @@
                 userScrolledUp = false;
                 
                 // Reset UI
-                const sendBtn = document.getElementById('sendBtn');
-                const stopBtn = document.getElementById('stopBtn');
+                const sendBtn = getCachedElement('sendBtn');
+                const stopBtn = getCachedElement('stopBtn');
                 sendBtn.classList.remove('loading');
                 sendBtn.disabled = false;
                 sendBtn.style.display = 'flex';
@@ -590,9 +612,9 @@
 
         function sendMessage() {
             console.log('sendMessage called');
-            const input = document.getElementById('messageInput');
-            const sendBtn = document.getElementById('sendBtn');
-            const stopBtn = document.getElementById('stopBtn');
+            const input = getCachedElement('messageInput');
+            const sendBtn = getCachedElement('sendBtn');
+            const stopBtn = getCachedElement('stopBtn');
             const message = input.value.trim();
             if (!message) return;
             
@@ -1051,7 +1073,7 @@
 
         // Enhanced addMessage function with proper markdown rendering
         function addMessage(sender, content, type = 'normal', imageData = null) {
-            const messagesContainer = document.getElementById('chatMessages');
+            const messagesContainer = getCachedElement('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}`;
             
@@ -1099,7 +1121,7 @@
                 </div>`;
                 if (imageData) {
                     messageContent = `<div class="message-content">` +
-                        `<img src="${imageData}" class="message-image" alt="Generated image" style="display:block;margin-bottom:10px;max-width:100%;border-radius:8px;" onload="smoothScrollToBottom(document.getElementById('chatMessages'), true);">` +
+                        `<img src="${imageData}" class="message-image" alt="Generated image" style="display:block;margin-bottom:10px;max-width:100%;border-radius:8px;" loading="lazy" onload="smoothScrollToBottom(getCachedElement('chatMessages'), true);">` +
                         tempDiv.innerHTML + copyBtns + `</div>`;
                 } else {
                     messageContent = `<div class="message-content">${tempDiv.innerHTML}${copyBtns}</div>`;
