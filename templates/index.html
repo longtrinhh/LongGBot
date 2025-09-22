@@ -66,6 +66,7 @@
             }
         }
         pre { position: relative; }
+
     </style>
 </head>
 <body>
@@ -394,9 +395,9 @@
         // Initialize micro-interactions on page load
         window.addEventListener('load', addMicroInteractions);
 
-        // On page load, load conversation history
+        // On page load, start with fresh conversation (don't load history)
         window.onload = function() {
-            console.log('Page loaded, setting up event listeners...');
+            console.log('Page loaded, ready for fresh conversation...');
             
             // Clear any existing image indicator
             const indicator = document.getElementById('imageIndicator');
@@ -404,18 +405,11 @@
                 indicator.remove();
             }
             
-            fetch('/history')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.history && Array.isArray(data.history)) {
-                        data.history.forEach(msg => {
-                            addMessage(msg.role === 'user' ? 'user' : 'assistant', msg.content);
-                        });
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading history:', error);
-                });
+            // Don't create conversation yet - wait for user's first message
+            // This prevents empty conversations from being saved
+            window.currentConversationId = null;
+            
+            console.log('Ready for new conversation (will create on first message)');
         };
 
         function handleKeyPress(event) {
@@ -445,14 +439,10 @@
                             return;
                         }
                         
-                        // Show preview (optional)
-                        const reader = new FileReader();
-                        let previewDiv = null;
-                        reader.onload = function(e) {
-                            previewDiv = addMessage('user', '<b>Image pasted and uploading...</b><br><img src="' + e.target.result + '" style="max-width:200px;max-height:200px;">');
-                        };
-                        reader.readAsDataURL(file);
-                        // Upload image
+                        // Show a clean uploading indicator without the base64 data
+                        const uploadingDiv = addMessage('assistant', '<i class="fas fa-spinner fa-spin"></i> <b>Uploading pasted image...</b>');
+                        
+                        // Upload image directly
                         const formData = new FormData();
                         formData.append('image', file);
                         fetchWithCode('/upload_image', {
@@ -461,18 +451,100 @@
                         })
                         .then(response => response.json())
                         .then(data => {
-                            if (previewDiv && previewDiv.parentNode) previewDiv.parentNode.removeChild(previewDiv);
+                            // Remove the uploading message
+                            if (uploadingDiv && uploadingDiv.parentNode) uploadingDiv.parentNode.removeChild(uploadingDiv);
+                            
                             if (data.success) {
                                 currentImageData = data.image;
-                                addMessage('user', 'Image uploaded successfully!');
-                                addMessage('assistant', 'Image uploaded! You can now ask me to analyze it or use it for editing.');
+                                
+                                // Show a clean success message with small preview
+                                addMessage('assistant', 'Image pasted successfully! You can now ask me to analyze it.');
+                                
+                                // Update input styling to indicate image is ready
+                                const messageInput = document.getElementById('messageInput');
+                                messageInput.placeholder = "Ask me about the pasted image...";
+                                messageInput.style.borderColor = "#4a4a8a";
+                                messageInput.style.boxShadow = "0 0 10px rgba(74, 74, 138, 0.3)";
+                                
+                                // Remove any existing image indicator
+                                const existingIndicator = document.getElementById('imageIndicator');
+                                if (existingIndicator) {
+                                    existingIndicator.remove();
+                                }
+                                
+                                // Add floating indicator with small preview
+                                const indicator = document.createElement('div');
+                                indicator.id = 'imageIndicator';
+                                indicator.innerHTML = `<i class="fas fa-image"></i> Image ready (click to remove)`;
+                                
+                                if (data.image) {
+                                    const thumb = document.createElement('img');
+                                    thumb.src = data.image;
+                                    thumb.alt = 'preview';
+                                    thumb.style.cssText = `
+                                        width: 36px;
+                                        height: 36px;
+                                        object-fit: cover;
+                                        border-radius: 8px;
+                                        margin-right: 10px;
+                                        vertical-align: middle;
+                                        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+                                        border: 1px solid #eee;
+                                        background: #fff;
+                                        display: inline-block;
+                                    `;
+                                    indicator.prepend(thumb);
+                                }
+                                
+                                // Style the floating indicator
+                                indicator.style.cssText = `
+                                    position: fixed;
+                                    bottom: 90px;
+                                    right: 40px;
+                                    z-index: 2000;
+                                    background: #4a4a8a;
+                                    color: white;
+                                    padding: 8px 16px 8px 8px;
+                                    border-radius: 16px;
+                                    font-size: 1rem;
+                                    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+                                    animation: fadeInUp 0.3s ease-out;
+                                    cursor: pointer;
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 8px;
+                                    transition: all 0.2s;
+                                `;
+                                
+                                // Add hover effects
+                                indicator.addEventListener('mouseenter', function() {
+                                    this.style.background = '#6a6a9a';
+                                    this.style.transform = 'scale(1.05)';
+                                });
+                                indicator.addEventListener('mouseleave', function() {
+                                    this.style.background = '#4a4a8a';
+                                    this.style.transform = 'scale(1)';
+                                });
+                                
+                                // Add click to remove functionality
+                                indicator.addEventListener('click', function() {
+                                    currentImageData = null;
+                                    messageInput.placeholder = "Type your message here...";
+                                    messageInput.style.borderColor = "";
+                                    messageInput.style.boxShadow = "";
+                                    this.remove();
+                                    addMessage('assistant', 'Image removed.');
+                                });
+                                
+                                messageInput.parentElement.appendChild(indicator);
                             } else {
-                                addMessage('assistant', `Error: ${data.error}`, 'error');
+                                addMessage('assistant', `Error uploading image: ${data.error}`, 'error');
                             }
                         })
                         .catch(error => {
-                            if (previewDiv && previewDiv.parentNode) previewDiv.parentNode.removeChild(previewDiv);
-                            addMessage('assistant', `Error: ${error.message}`, 'error');
+                            // Remove the uploading message
+                            if (uploadingDiv && uploadingDiv.parentNode) uploadingDiv.parentNode.removeChild(uploadingDiv);
+                            addMessage('assistant', `Error uploading image: ${error.message}`, 'error');
                         });
                         event.preventDefault();
                         break;
@@ -490,6 +562,9 @@
                 currentStreamReader.cancel();
                 currentStreamReader = null;
                 isStreaming = false;
+                
+                // Reset scroll tracking flags
+                userScrolledUp = false;
                 
                 // Reset UI
                 const sendBtn = document.getElementById('sendBtn');
@@ -527,6 +602,10 @@
             sendBtn.style.display = 'none';
             stopBtn.style.display = 'flex';
             isStreaming = true;
+            
+            // Reset scroll tracking flags
+            userScrolledUp = false;
+            lastAutoScrollTime = 0;
             
             // Add the user message
             addMessage('user', message);
@@ -598,6 +677,9 @@
                             sendBtn.style.display = 'flex';
                             stopBtn.style.display = 'none';
                             isStreaming = false;
+                
+                // Reset scroll tracking flags
+                userScrolledUp = false;
                             currentStreamReader = null;
                             // Add copy buttons to the just-finished message
                             setTimeout(enhanceAllAssistantMessagesWithCopy, 0);
@@ -619,6 +701,9 @@
                                         sendBtn.style.display = 'flex';
                                         stopBtn.style.display = 'none';
                                         isStreaming = false;
+                
+                // Reset scroll tracking flags
+                userScrolledUp = false;
                                         currentStreamReader = null;
                                         addMessage('assistant', `Error: ${data.error}`, 'error');
                                         return;
@@ -660,7 +745,8 @@
                                         if (messageContent) {
                                             messageContent.innerHTML = marked.parse(fullResponse);
                                         }
-                                        smoothScrollToBottom(document.getElementById('chatMessages'));
+                                        // Only auto-scroll if user is near bottom (don't force during streaming)
+                                        smoothScrollToBottom(document.getElementById('chatMessages'), false);
                                     } else if (data.done) {
                                         // Remove loading state
                                         sendBtn.classList.remove('loading');
@@ -668,6 +754,9 @@
                                         sendBtn.style.display = 'flex';
                                         stopBtn.style.display = 'none';
                                         isStreaming = false;
+                
+                // Reset scroll tracking flags
+                userScrolledUp = false;
                                         currentStreamReader = null;
                                         // Add copy buttons to the just-finished message (only the last one for efficiency)
                                         setTimeout(() => {
@@ -760,6 +849,9 @@
                 sendBtn.style.display = 'flex';
                 stopBtn.style.display = 'none';
                 isStreaming = false;
+                
+                // Reset scroll tracking flags
+                userScrolledUp = false;
                 currentStreamReader = null;
                 
                 if (thinkingDiv && thinkingDiv.parentNode) thinkingDiv.parentNode.removeChild(thinkingDiv);
@@ -830,23 +922,88 @@
             });
         }
 
+        // Track if user has manually scrolled during streaming
+        let userScrolledUp = false;
+        let lastAutoScrollTime = 0;
+
+        // Check if user is near the bottom of the chat
+        function isNearBottom(container, threshold = 50) {
+            if (!container) return true;
+            const scrollHeight = container.scrollHeight;
+            const scrollTop = container.scrollTop;
+            const clientHeight = container.clientHeight;
+            return (scrollHeight - scrollTop - clientHeight) <= threshold;
+        }
+
         // Enhanced scroll to bottom with smooth animation
-        function smoothScrollToBottom(container) {
+        function smoothScrollToBottom(container, forceScroll = false) {
+            if (!container) return;
+            
+            // During streaming, be more restrictive about auto-scrolling
+            if (!forceScroll && isStreaming) {
+                // Check if user has manually scrolled up during streaming
+                if (userScrolledUp) {
+                    return;
+                }
+                // Only auto-scroll if user is very close to bottom during streaming
+                if (!isNearBottom(container, 30)) {
+                    return;
+                }
+            } else if (!forceScroll && !isNearBottom(container)) {
+                return;
+            }
+            
             // Add a small delay to ensure DOM updates are complete
             setTimeout(() => {
-            const scrollHeight = container.scrollHeight;
-            const clientHeight = container.clientHeight;
-            const maxScrollTop = scrollHeight - clientHeight;
+                const scrollHeight = container.scrollHeight;
+                const clientHeight = container.clientHeight;
+                const maxScrollTop = scrollHeight - clientHeight;
                 
                 // On mobile, add extra padding to ensure last message is visible
                 const isMobile = window.innerWidth <= 700;
                 const extraPadding = isMobile ? 20 : 0;
             
-            container.scrollTo({
+                container.scrollTo({
                     top: maxScrollTop + extraPadding,
-                behavior: 'smooth'
-            });
+                    behavior: 'smooth'
+                });
+                
+                // Track auto-scroll time
+                lastAutoScrollTime = Date.now();
             }, 50);
+        }
+
+
+        // Monitor scroll position for user behavior tracking
+        function initScrollMonitoring() {
+            const chatMessages = document.getElementById('chatMessages');
+            
+            if (!chatMessages) return;
+            
+            let scrollTimeout;
+            
+            chatMessages.addEventListener('scroll', function(e) {
+                // Clear existing timeout
+                clearTimeout(scrollTimeout);
+                
+                // Debounce scroll events
+                scrollTimeout = setTimeout(() => {
+                    const isUserAtBottom = isNearBottom(chatMessages, 100);
+                    
+                    // Check if this was a user-initiated scroll during streaming
+                    if (isStreaming) {
+                        const timeSinceAutoScroll = Date.now() - lastAutoScrollTime;
+                        
+                        // If scroll happened more than 100ms after auto-scroll, it's likely user-initiated
+                        if (timeSinceAutoScroll > 100 && !isUserAtBottom) {
+                            userScrolledUp = true;
+                        } else if (isUserAtBottom) {
+                            // User scrolled back to bottom
+                            userScrolledUp = false;
+                        }
+                    }
+                }, 100);
+            });
         }
 
         // Add micro-interactions
@@ -942,7 +1099,7 @@
                 </div>`;
                 if (imageData) {
                     messageContent = `<div class="message-content">` +
-                        `<img src="${imageData}" class="message-image" alt="Generated image" style="display:block;margin-bottom:10px;max-width:100%;border-radius:8px;" onload="this.parentElement.parentElement.parentElement.scrollTop = this.parentElement.parentElement.parentElement.scrollHeight;">` +
+                        `<img src="${imageData}" class="message-image" alt="Generated image" style="display:block;margin-bottom:10px;max-width:100%;border-radius:8px;" onload="smoothScrollToBottom(document.getElementById('chatMessages'), true);">` +
                         tempDiv.innerHTML + copyBtns + `</div>`;
                 } else {
                     messageContent = `<div class="message-content">${tempDiv.innerHTML}${copyBtns}</div>`;
@@ -1005,9 +1162,9 @@
                 messageDiv.style.transform = 'translateX(0)';
             }, 10);
             
-            // Smooth scroll to bottom
+            // Smooth scroll to bottom (force scroll for new messages)
             setTimeout(() => {
-                smoothScrollToBottom(messagesContainer);
+                smoothScrollToBottom(messagesContainer, true);
             }, 100);
             
             // If there's an image, scroll again after it loads
@@ -1016,7 +1173,7 @@
                 if (img) {
                     img.onload = () => {
                         setTimeout(() => {
-                            smoothScrollToBottom(messagesContainer);
+                            smoothScrollToBottom(messagesContainer, true);
                         }, 100);
                     };
                 }
@@ -1300,20 +1457,26 @@
                 
                 if (data.success) {
                     currentImageData = data.image;
-                    // Only show the floating indicator and the assistant message
-                    addMessage('assistant', 'Image uploaded! You can now ask me to analyze it or use it for editing.');
+                    addMessage('assistant', 'Image uploaded successfully! You can now ask me to analyze it.');
                     hideImageUpload();
                     
-                    // Update chat input placeholder to indicate image is ready
+                    // Update chat input styling to indicate image is ready
                     const messageInput = document.getElementById('messageInput');
                     messageInput.placeholder = "Ask me about the uploaded image...";
                     messageInput.style.borderColor = "#4a4a8a";
                     messageInput.style.boxShadow = "0 0 10px rgba(74, 74, 138, 0.3)";
                     
-                    // Add a small indicator
+                    // Remove any existing image indicator
+                    const existingIndicator = document.getElementById('imageIndicator');
+                    if (existingIndicator) {
+                        existingIndicator.remove();
+                    }
+                    
+                    // Add floating indicator with small preview
                     const indicator = document.createElement('div');
                     indicator.id = 'imageIndicator';
                     indicator.innerHTML = `<i class="fas fa-image"></i> Image ready (click to remove)`;
+                    
                     if (data.image) {
                         const thumb = document.createElement('img');
                         thumb.src = data.image;
@@ -1333,7 +1496,7 @@
                         indicator.prepend(thumb);
                     }
                     
-                    // Add hover effect
+                    // Style the floating indicator
                     indicator.style.cssText = `
                         position: fixed;
                         bottom: 90px;
@@ -1352,6 +1515,8 @@
                         gap: 8px;
                         transition: all 0.2s;
                     `;
+                    
+                    // Add hover effects
                     indicator.addEventListener('mouseenter', function() {
                         this.style.background = '#6a6a9a';
                         this.style.transform = 'scale(1.05)';
@@ -1361,10 +1526,19 @@
                         this.style.transform = 'scale(1)';
                     });
                     
-                    messageInput.parentElement.style.position = 'relative';
+                    // Add click to remove functionality
+                    indicator.addEventListener('click', function() {
+                        currentImageData = null;
+                        messageInput.placeholder = "Type your message here...";
+                        messageInput.style.borderColor = "";
+                        messageInput.style.boxShadow = "";
+                        this.remove();
+                        addMessage('assistant', 'Image removed.');
+                    });
+                    
                     messageInput.parentElement.appendChild(indicator);
                 } else {
-                    addMessage('assistant', `Error: ${data.error}`, 'error');
+                    addMessage('assistant', `Error uploading image: ${data.error}`, 'error');
                     hideImageUpload();
                 }
                 document.getElementById('imageFile').value = '';
@@ -1683,6 +1857,9 @@
             console.log('DOMContentLoaded - updating premium indicator');
             updatePremiumIndicator();
             
+            // Initialize scroll monitoring for user behavior tracking
+            initScrollMonitoring();
+            
             // Additional mobile-specific initialization
             if (window.innerWidth <= 700) {
                 console.log('Mobile device detected - ensuring mobile premium indicator is properly initialized');
@@ -1702,7 +1879,7 @@
             if (input && chatMessages) {
                 input.addEventListener('focus', function() {
                     setTimeout(function() {
-                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                        smoothScrollToBottom(chatMessages, true);
                     }, 300);
                 });
             }
@@ -1720,7 +1897,7 @@
                     // Significant height change (likely keyboard open/close)
                     setTimeout(function() {
                         if (chatMessages) {
-                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                            smoothScrollToBottom(chatMessages, true);
                         }
                         // Force a reflow to ensure proper positioning
                         document.body.style.height = '100dvh';
@@ -1829,7 +2006,7 @@
             if (input && chatMessages) {
                 input.addEventListener('focus', function() {
                     setTimeout(function() {
-                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                        smoothScrollToBottom(chatMessages, true);
                     }, 300);
                 });
             }

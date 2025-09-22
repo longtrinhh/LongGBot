@@ -166,13 +166,10 @@ def chat():
         if conversation_id:
             context = get_firestore_conversation(user_key, conversation_id)
         else:
-            conversations = get_firestore_conversations_for_user(user_key)
-            if conversations:
-                conversation_id = conversations[0]['conversation_id']
-                context = get_firestore_conversation(user_key, conversation_id)
-            else:
-                conversation_id = create_firestore_conversation(user_key)
-                context = []
+            # Always create a new conversation when no conversation_id is provided
+            # This ensures fresh conversations for new tabs/sessions
+            conversation_id = create_firestore_conversation(user_key)
+            context = []
         image_keywords = [
             "generate image", "tạo ảnh", "tạo tranh", "tạo logo", "gen image", 
             "gen pic", "gen photo", "gen logo", "create image", "create pic", 
@@ -226,13 +223,10 @@ def chat_stream():
         if conversation_id:
             context = get_firestore_conversation(user_key, conversation_id)
         else:
-            conversations = get_firestore_conversations_for_user(user_key)
-            if conversations:
-                conversation_id = conversations[0]['conversation_id']
-                context = get_firestore_conversation(user_key, conversation_id)
-            else:
-                conversation_id = create_firestore_conversation(user_key)
-                context = []
+            # Always create a new conversation when no conversation_id is provided
+            # This ensures fresh conversations for new tabs/sessions
+            conversation_id = create_firestore_conversation(user_key)
+            context = []
                 
         image_keywords = [
             "generate image", "tạo ảnh", "tạo tranh", "tạo logo", "gen image", 
