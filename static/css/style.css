@@ -284,41 +284,30 @@ body::before {
 }
 
 .stop-btn {
-    background: linear-gradient(135deg, #ff6b6b, #ee5a52);
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 50px;
-    height: 50px;
+    background: var(--color-bg);
+    color: #ff6b6b;
+    border: 1px solid #ff6b6b;
+    border-radius: 8px;
+    width: 40px;
+    height: 40px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     display: none;
     align-items: center;
     justify-content: center;
     font-size: 1.2em;
-    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
     position: relative;
-    overflow: hidden;
 }
 
 .stop-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transition: left 0.5s;
-}
-
-.stop-btn:hover::before {
-    left: 100%;
+    content: none !important;
 }
 
 .stop-btn:hover, .stop-btn:focus {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+    background: #ff6b6b;
+    border-color: #ff6b6b;
+    color: white;
+    transform: none;
 }
 
 .stop-btn:active {
@@ -326,16 +315,21 @@ body::before {
 }
 
 .upload-btn {
-    background: linear-gradient(135deg, #2ecc40, #27ae60);
-    border: none;
-    color: white;
-    padding: 12px 16px;
-    border-radius: 12px;
+    background: var(--color-bg);
+    border: 1px solid #ddd;
+    color: #666;
+    padding: 8px;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 1rem;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 1.2rem;
+    transition: all 0.2s ease;
     position: relative;
     margin-right: 8px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .upload-btn::before {
@@ -343,26 +337,31 @@ body::before {
 }
 
 .upload-btn:hover:not(:disabled) {
-    transform: scale(1.15);
-    background: linear-gradient(135deg, #27ae60, #2ecc40);
-    box-shadow: 0 8px 25px rgba(46, 204, 64, 0.4);
+    background: #666;
+    border-color: #666;
+    color: white;
+    transform: none;
 }
 
 .upload-btn:active:not(:disabled) {
-    transform: scale(0.9);
+    background: #e9e9e9;
+    transform: scale(0.95);
 }
 
 .upload-btn:disabled {
-    background: #ccc;
-    color: #666;
+    background: #f9f9f9;
+    color: #ccc;
+    border-color: #eee;
     cursor: not-allowed;
-    opacity: 0.6;
+    opacity: 0.5;
 }
 
 .upload-btn:disabled:hover {
     transform: none;
-    box-shadow: none;
+    background: #f9f9f9;
+    border-color: #eee;
 }
+
 
 /* Modal animations */
 .modal-overlay {
@@ -731,15 +730,20 @@ body::before {
 }
 
 .send-btn {
-    background: linear-gradient(135deg, #4a4a8a, #6a6a9a);
-    border: none;
-    color: white;
-    padding: 12px 16px;
-    border-radius: 12px;
+    background: var(--color-bg);
+    border: 1px solid #4a4a8a;
+    color: #4a4a8a;
+    padding: 8px;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 1rem;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 1.2rem;
+    transition: all 0.2s ease;
     position: relative;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .send-btn::before {
@@ -747,13 +751,14 @@ body::before {
 }
 
 .send-btn:hover {
-    transform: scale(1.15) rotate(8deg);
-    background: linear-gradient(135deg, #5a5a9a, #7a7aaa);
-    box-shadow: 0 8px 25px rgba(74, 74, 138, 0.4);
+    background: #4a4a8a;
+    border-color: #4a4a8a;
+    color: white;
+    transform: none;
 }
 
 .send-btn:active {
-    transform: scale(0.9);
+    transform: scale(0.95);
 }
 
 .btn {
@@ -1850,16 +1855,20 @@ body.dark-mode .topbar-mobile {
         resize: none;
     }
     .send-btn {
-        font-size: 1.2rem;
-        padding: 0.6rem 1rem;
-        border-radius: 10px;
+        font-size: 1.1rem;
+        padding: 6px;
+        border-radius: 8px;
         margin-left: 4px;
+        width: 36px;
+        height: 36px;
     }
     .upload-btn {
-        font-size: 1.2rem;
-        padding: 0.6rem 1rem;
-        border-radius: 10px;
+        font-size: 1.1rem;
+        padding: 6px;
+        border-radius: 8px;
         margin-right: 4px;
+        width: 36px;
+        height: 36px;
     }
     .message-content {
         font-size: 1.08em !important;
@@ -1963,37 +1972,35 @@ body.dark-mode .topbar-mobile {
 }
 
 body.dark-mode .send-btn {
-    background: linear-gradient(135deg, #4a4a8a, #6a6a9a) !important;
-    color: #fff !important;
-    box-shadow: 0 2px 8px var(--color-shadow) !important;
-    border: none !important;
+    background: var(--color-bg) !important;
+    color: #8ab4f8 !important;
+    border: 1px solid #8ab4f8 !important;
 }
 body.dark-mode .send-btn:hover, body.dark-mode .send-btn:focus {
-    background: linear-gradient(135deg, #5a5a9a, #7a7aaa) !important;
-    color: #fff !important;
-    box-shadow: 0 8px 25px var(--color-shadow) !important;
-    transform: scale(1.15) rotate(8deg);
+    background: #8ab4f8 !important;
+    color: #181a20 !important;
+    border-color: #8ab4f8 !important;
+    transform: none;
 }
 body.dark-mode .send-btn:active {
-    transform: scale(0.9);
+    transform: scale(0.95);
 }
 
 body.dark-mode .upload-btn {
-    background: linear-gradient(135deg, #2ecc40, #27ae60) !important;
-    color: #fff !important;
-    box-shadow: 0 2px 8px var(--color-shadow) !important;
-    border: none !important;
+    background: var(--color-bg) !important;
+    color: #ccc !important;
+    border: 1px solid #555 !important;
 }
 
 body.dark-mode .upload-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, #27ae60, #2ecc40) !important;
-    color: #fff !important;
-    box-shadow: 0 8px 25px rgba(46, 204, 64, 0.4) !important;
-    transform: scale(1.15);
+    background: #ccc !important;
+    color: #181a20 !important;
+    border-color: #ccc !important;
+    transform: none;
 }
 
 body.dark-mode .upload-btn:active:not(:disabled) {
-    transform: scale(0.9);
+    transform: scale(0.95);
 }
 
 body.dark-mode .upload-btn:disabled {
@@ -2004,22 +2011,27 @@ body.dark-mode .upload-btn:disabled {
 }
 
 body.dark-mode .stop-btn {
-    background: linear-gradient(135deg, #ff6b6b, #ee5a52) !important;
-    color: white !important;
-    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4) !important;
+    background: var(--color-bg) !important;
+    color: #ff6b6b !important;
+    border: 1px solid #ff6b6b !important;
 }
 
 body.dark-mode .stop-btn:hover, body.dark-mode .stop-btn:focus {
-    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.5) !important;
+    background: #ff6b6b !important;
+    color: #181a20 !important;
+    border-color: #ff6b6b !important;
+    transform: none;
 }
 
-/* Mobile styles for stop button */
+
+/* Mobile styles for buttons */
 @media (max-width: 700px) {
-    .stop-btn {
-        width: 45px;
-        height: 45px;
+    .stop-btn, .upload-btn, .send-btn {
+        width: 36px;
+        height: 36px;
         font-size: 1.1em;
     }
+    
 }
 
 body.dark-mode .chat-input {

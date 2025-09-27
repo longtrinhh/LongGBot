@@ -3,3 +3,6 @@ aiohttp
 asyncio
 Pillow
 requests
+PyPDF2
+python-docx
+tiktoken

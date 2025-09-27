@@ -8,13 +8,17 @@ from ai_client import ask_ai, ask_ai_stream
 from ai_image_client import AIImageClient
 from shared_context import (
     get_user_model, set_user_model, clear_user_context,
-    get_firestore_conversations_for_user, get_firestore_conversation, add_firestore_message, create_firestore_conversation, delete_firestore_conversation
+    get_firestore_conversations_for_user, get_firestore_conversation, add_firestore_message, create_firestore_conversation, delete_firestore_conversation,
+    set_user_document, get_user_document, clear_user_document, has_user_document,
+    set_conversation_title_if_default, generate_title_from_text
 )
+import tiktoken
 from config import CHAT_MODELS, IMAGE_GEN_MODELS, MODEL_NAME, FLASK_SECRET_KEY
 import uuid
 import os
 import hashlib
 from PIL import Image
+from document_processor import DocumentProcessor
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
@@ -61,6 +65,56 @@ def get_user_key():
 
 def run_async(coro):
     return asyncio.run(coro)
+
+def limit_context_to_tokens(messages, max_tokens=30000):
+    """Limit context messages to stay under max_tokens limit"""
+    if not messages:
+        return messages
+    
+    # Use cl100k_base encoding (GPT-4 tokenizer)
+    try:
+        encoding = tiktoken.get_encoding("cl100k_base")
+    except:
+        # Fallback to approximate token counting (roughly 4 chars per token)
+        encoding = None
+    
+    total_tokens = 0
+    limited_messages = []
+    
+    # Start from the most recent messages and work backwards
+    for message in reversed(messages):
+        content = message.get('content', '')
+        if isinstance(content, list):
+            # Handle multimodal content
+            text_content = ''
+            for item in content:
+                if item.get('type') == 'text':
+                    text_content += item.get('text', '')
+        else:
+            text_content = str(content)
+        
+        if encoding:
+            message_tokens = len(encoding.encode(text_content))
+        else:
+            # Approximate: 4 characters per token
+            message_tokens = len(text_content) // 4
+        
+        if total_tokens + message_tokens > max_tokens:
+            break
+            
+        total_tokens += message_tokens
+        limited_messages.insert(0, message)  # Insert at beginning to maintain order
+    
+    return limited_messages
+
+def is_free_model(model):
+    """Check if a model is in the free tier"""
+    free_models = [
+        'gpt-4o-mini-search-preview-2025-03-11',
+        'gpt-5-nano:free',
+        'deepseek-v3.1:free'
+    ]
+    return model in free_models
 
 @app.route('/')
 def index():
@@ -144,6 +198,12 @@ def add_message(conversation_id):
     if not message:
         return jsonify({'error': 'Message cannot be empty'}), 400
     add_firestore_message(user_key, conversation_id, {'role': role, 'content': message})
+    # If this is the first user message in an existing conversation, set the title
+    if role == 'user':
+        try:
+            set_conversation_title_if_default(user_key, conversation_id, message)
+        except Exception as e:
+            logger.warning(f"Unable to set conversation title: {e}")
     return jsonify({'success': True})
 
 @app.route('/conversations/<conversation_id>', methods=['DELETE'])
@@ -171,14 +231,23 @@ def chat():
         if premium:
             model = get_user_model(user_key, 'chat') or 'claude-sonnet-4-20250514-thinking'
         else:
-            model = 'gpt-4o-mini-search-preview-2025-03-11'
+            model = get_user_model(user_key, 'chat') or 'gpt-4o-mini-search-preview-2025-03-11'
         if conversation_id:
             context = get_firestore_conversation(user_key, conversation_id)
+            # Set title if default and we now have the first user message
+            set_conversation_title_if_default(user_key, conversation_id, message)
         else:
             # Always create a new conversation when no conversation_id is provided
             # This ensures fresh conversations for new tabs/sessions
             conversation_id = create_firestore_conversation(user_key)
             context = []
+            # Set the conversation title from the first user message
+            set_conversation_title_if_default(user_key, conversation_id, message)
+        
+        # Limit context for free models to stay under 32k tokens
+        if not premium and is_free_model(model):
+            context = limit_context_to_tokens(context, max_tokens=30000)
+            
         image_keywords = [
             "generate image", "tạo ảnh", "tạo tranh", "tạo logo", "gen image", 
             "gen pic", "gen photo", "gen logo", "create image", "create pic", 
@@ -198,7 +267,35 @@ def chat():
             except Exception as e:
                 logger.error(f"Error decoding image data: {e}")
                 return jsonify({'error': 'Invalid image data'}), 400
-        response = run_async(ask_ai(message, model, context, image_bytes))
+        
+        # If there is a stored document and it hasn't been injected into this conversation yet,
+        # inject it once as a system message so it persists in history even after removal.
+        document = get_user_document(user_key)
+        if document:
+            injected_conv = document.get('injected_conversation_id')
+            if injected_conv != conversation_id:
+                system_text = (
+                    f"The user has uploaded a document named '{document['filename']}' "
+                    f"(type: {document['file_type']}). Here is its content for reference. "
+                    f"Use it to answer future questions until the user uploads a new document or asks to ignore it.\n\n"
+                    f"--- DOCUMENT CONTENT START ---\n"
+                    f"{document['content']}\n"
+                    f"--- DOCUMENT CONTENT END ---"
+                )
+                # Add to persistent history
+                add_firestore_message(user_key, conversation_id, { 'role': 'system', 'content': system_text })
+                # Also include in the in-memory context for this immediate call
+                context = (context or []) + [{ 'role': 'system', 'content': system_text }]
+                # Mark as injected for this conversation
+                document['injected_conversation_id'] = conversation_id
+                
+                # Re-apply context limiting after document injection for free models
+                if not premium and is_free_model(model):
+                    context = limit_context_to_tokens(context, max_tokens=30000)
+
+        final_message = message
+        
+        response = run_async(ask_ai(final_message, model, context, image_bytes))
         add_firestore_message(user_key, conversation_id, {'role': 'user', 'content': message})
         add_firestore_message(user_key, conversation_id, {'role': 'assistant', 'content': response})
         return jsonify({
@@ -227,15 +324,23 @@ def chat_stream():
         if premium:
             model = get_user_model(user_key, 'chat') or 'claude-sonnet-4-20250514-thinking'
         else:
-            model = 'gpt-4o-mini-search-preview-2025-03-11'
+            model = get_user_model(user_key, 'chat') or 'gpt-4o-mini-search-preview-2025-03-11'
             
         if conversation_id:
             context = get_firestore_conversation(user_key, conversation_id)
+            # Set title if default and we now have the first user message
+            set_conversation_title_if_default(user_key, conversation_id, message)
         else:
             # Always create a new conversation when no conversation_id is provided
             # This ensures fresh conversations for new tabs/sessions
             conversation_id = create_firestore_conversation(user_key)
             context = []
+            # Set the conversation title from the first user message
+            set_conversation_title_if_default(user_key, conversation_id, message)
+        
+        # Limit context for free models to stay under 32k tokens
+        if not premium and is_free_model(model):
+            context = limit_context_to_tokens(context, max_tokens=30000)
                 
         image_keywords = [
             "generate image", "tạo ảnh", "tạo tranh", "tạo logo", "gen image", 
@@ -258,12 +363,36 @@ def chat_stream():
                 logger.error(f"Error decoding image data: {e}")
                 return jsonify({'error': 'Invalid image data'}), 400
 
+        # Inject document once as a system message in this conversation if needed
+        document = get_user_document(user_key)
+        if document:
+            injected_conv = document.get('injected_conversation_id')
+            if injected_conv != conversation_id:
+                system_text = (
+                    f"The user has uploaded a document named '{document['filename']}' "
+                    f"(type: {document['file_type']}). Here is its content for reference. "
+                    f"Use it to answer future questions until the user uploads a new document or asks to ignore it.\n\n"
+                    f"--- DOCUMENT CONTENT START ---\n"
+                    f"{document['content']}\n"
+                    f"--- DOCUMENT CONTENT END ---"
+                )
+                # Persist and include in streaming context immediately
+                add_firestore_message(user_key, conversation_id, { 'role': 'system', 'content': system_text })
+                context = (context or []) + [{ 'role': 'system', 'content': system_text }]
+                document['injected_conversation_id'] = conversation_id
+                
+                # Re-apply context limiting after document injection for free models
+                if not premium and is_free_model(model):
+                    context = limit_context_to_tokens(context, max_tokens=30000)
+
+        final_message = message
+
         def generate():
             full_response = ""
             try:
                 async def stream_response():
                     nonlocal full_response
-                    async for chunk in ask_ai_stream(message, model, context, image_bytes):
+                    async for chunk in ask_ai_stream(final_message, model, context, image_bytes):
                         if chunk:
                             full_response += chunk
                             yield f"data: {json.dumps({'chunk': chunk, 'model': model, 'conversation_id': conversation_id})}\n\n"
@@ -371,7 +500,7 @@ def set_model():
         user_key = get_user_key()
         premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
         if model_type == 'chat':
-            if not premium and model != "gpt-4o-mini-search-preview-2025-03-11":
+            if not premium and not is_free_model(model):
                 return jsonify({'error': 'This model is only available for premium users.'}), 403
         if model_type == 'image':
             if not premium:
@@ -402,9 +531,32 @@ def clear_context():
         logger.error(f"Error clearing context: {e}")
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
+@app.route('/clear_document', methods=['POST'])
+def clear_document():
+    try:
+        user_key = get_user_key()
+        data = request.get_json(silent=True) or {}
+        conversation_id = data.get('conversation_id')
+        # Add a system message to instruct the model to ignore the previously uploaded document
+        if conversation_id:
+            add_firestore_message(user_key, conversation_id, {
+                'role': 'system',
+                'content': 'The previously uploaded document has been removed. Ignore it for future answers, but keep prior conversation context.'
+            })
+        clear_user_document(user_key)
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error clearing document: {e}")
+        return jsonify({'error': f'Error: {str(e)}'}), 500
+
 @app.route('/upload_image', methods=['POST'])
 def upload_image():
     try:
+        # Premium gate for image uploads
+        user_key = get_user_key()
+        premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
+        if not premium:
+            return jsonify({'error': 'Image upload is only available for premium users.'}), 403
         if 'image' not in request.files:
             return jsonify({'error': 'No image file provided'}), 400
             
@@ -467,6 +619,64 @@ def upload_image():
         
     except Exception as e:
         logger.error(f"Error uploading image: {e}", exc_info=True)
+        return jsonify({'error': f'Error: {str(e)}'}), 500
+
+@app.route('/upload_document', methods=['POST'])
+def upload_document():
+    try:
+        # Premium gate for document uploads
+        user_key = get_user_key()
+        premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
+        if not premium:
+            return jsonify({'error': 'Document upload is only available for premium users.'}), 403
+        if 'document' not in request.files:
+            return jsonify({'error': 'No document file provided'}), 400
+            
+        file = request.files['document']
+        
+        if file.filename == '':
+            return jsonify({'error': 'No document file selected'}), 400
+        
+        # Validate file using document processor
+        file.seek(0, 2)  # Seek to end
+        file_size = file.tell()
+        file.seek(0)  # Seek back to beginning
+        
+        is_valid, error_message = DocumentProcessor.validate_document_file(file.filename, file_size)
+        if not is_valid:
+            return jsonify({'error': error_message}), 400
+        
+        # Read file data
+        file_data = file.read()
+        
+        # Process document and extract text
+        success, content, file_type = DocumentProcessor.process_document(file_data, file.filename)
+        
+        if not success:
+            return jsonify({'error': content}), 400
+        
+        # Store document content for the user
+        set_user_document(user_key, content, file.filename, file_type)
+        
+        # If a conversation id was provided in headers or query, try to set a title
+        conv_hint = request.args.get('conversation_id') or request.headers.get('X-Conversation-Id')
+        if conv_hint:
+            try:
+                # Prefer document filename as a friendly title if current title is default
+                base_title = os.path.splitext(file.filename)[0]
+                set_conversation_title_if_default(user_key, conv_hint, base_title)
+            except Exception:
+                pass
+        
+        return jsonify({
+            'success': True,
+            'filename': file.filename,
+            'file_type': file_type,
+            'message': f'Document "{file.filename}" uploaded and processed successfully! You can ask multiple questions about its content. Click the green indicator to remove the document when done.'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error uploading document: {e}", exc_info=True)
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
 @app.route('/history', methods=['GET'])

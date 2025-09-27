@@ -12,6 +12,7 @@ MODEL_FILE = "user_models.json"
 
 user_contexts = {}
 user_models = {}
+user_documents = {}  # Store uploaded document content per user
 
 firestore_client = firestore.Client()
 FIRESTORE_COLLECTION = "user_conversations"
@@ -194,5 +195,82 @@ def delete_firestore_conversation(user_id, conversation_id):
     
     doc_ref = firestore_client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
     doc_ref.delete()
+
+def set_conversation_title_if_default(user_id, conversation_id, new_title):
+    """Set conversation title if it is missing or the default placeholder."""
+    try:
+        doc_ref = firestore_client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
+        doc = doc_ref.get()
+        if not doc.exists:
+            return
+        data = doc.to_dict() or {}
+        current = data.get("title")
+        # Only set if missing or equals default placeholder
+        if not current or current.strip().lower() == "new conversation":
+            # Trim and clean title
+            safe = (new_title or "").strip()
+            if not safe:
+                return
+            if len(safe) > 80:
+                safe = safe[:80] + "…"
+            doc_ref.update({"title": safe})
+            # Invalidate cache for this user so listing picks up new title
+            _invalidate_user_cache(user_id)
+    except Exception as e:
+        logger.error(f"Error setting conversation title: {e}")
+
+def generate_title_from_text(text: str) -> str:
+    """Generate a concise conversation title from arbitrary text.
+
+    Heuristics:
+    - Use the first sentence/line
+    - Collapse whitespace and strip markdown-ish fences
+    - Truncate to ~60 chars
+    """
+    if not text:
+        return "New Conversation"
+    s = str(text)
+    # Remove backticks and excessive spaces
+    s = s.replace('`', ' ').replace('\r', ' ').strip()
+    # Take first line before hard newline
+    first_line = s.split('\n', 1)[0]
+    # Split by sentence terminators
+    import re
+    sentence = re.split(r"(?<=[.!?])\s", first_line)[0] if first_line else s
+    candidate = sentence.strip() or s.strip()
+    # Collapse spaces
+    candidate = re.sub(r"\s+", " ", candidate)
+    # Limit length
+    max_len = 60
+    if len(candidate) > max_len:
+        candidate = candidate[:max_len].rstrip() + "…"
+    return candidate or "New Conversation"
+
+def set_user_document(user_key: str, content: str, filename: str, file_type: str):
+    """Store document content for a user"""
+    user_key_str = str(user_key)
+    user_documents[user_key_str] = {
+        'content': content,
+        'filename': filename,
+        'file_type': file_type,
+        # Track the conversation id where this document was injected as a system message
+        'injected_conversation_id': None
+    }
+
+def get_user_document(user_key: str) -> Optional[Dict]:
+    """Get stored document content for a user"""
+    user_key_str = str(user_key)
+    return user_documents.get(user_key_str)
+
+def clear_user_document(user_key: str):
+    """Clear stored document content for a user"""
+    user_key_str = str(user_key)
+    if user_key_str in user_documents:
+        del user_documents[user_key_str]
+
+def has_user_document(user_key: str) -> bool:
+    """Check if user has uploaded document"""
+    user_key_str = str(user_key)
+    return user_key_str in user_documents
 
 load_data() 
