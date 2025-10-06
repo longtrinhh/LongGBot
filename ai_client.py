@@ -58,6 +58,7 @@ async def ask_ai_stream(question: str, model: str = MODEL_NAME, context=None, im
         "messages": messages,
         "max_tokens": 10000,
         "temperature": 0.7,
+        "web_search": True,
         "stream": True,
         "system": "You are a helpful AI assistant. Use proper markdown formatting in your responses including headers (##, ###), bold (**text**), italic (*text*), code blocks (```), inline code (`code`), lists (- or 1.), and tables when appropriate. You can think through problems step by step and provide detailed, accurate responses. You can also analyze images and answer questions about them."
     }
@@ -128,6 +129,7 @@ async def ask_ai(question: str, model: str = MODEL_NAME, context=None, image_dat
         "messages": messages,
         "max_tokens": 10000,
         "temperature": 0.7,
+        "web_search": True,
         "system": "You are a helpful AI assistant. Use proper markdown formatting in your responses including headers (##, ###), bold (**text**), italic (*text*), code blocks (```), inline code (`code`), lists (- or 1.), and tables when appropriate. You can think through problems step by step and provide detailed, accurate responses. You can also analyze images and answer questions about them."
     }
     

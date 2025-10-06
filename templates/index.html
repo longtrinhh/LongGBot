@@ -182,11 +182,13 @@
     <div id="chatModelModal" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <div class="section-title">Select Chat Model</div>
-            {% for model_id, model_name in chat_models %}
-            <div class="model-option" data-model-id="{{ model_id }}" onclick="modelOptionClick('{{ model_id }}', 'chat')">
-                <input type="radio" name="chatModel" value="{{ model_id }}" id="chatRadio_{{ model_id }}"> {{ model_name }}
+            <div class="model-list-container">
+                {% for model_id, model_name in chat_models %}
+                <div class="model-option" data-model-id="{{ model_id }}" onclick="modelOptionClick('{{ model_id }}', 'chat')">
+                    {{ model_name }}
+                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
             <button class="btn" onclick="hideModelSelector('chat')">Cancel</button>
         </div>
     </div>
@@ -195,11 +197,13 @@
     <div id="imageModelModal" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <div class="section-title">Select Image Model</div>
-            {% for model_id, model_name in image_models %}
-            <div class="model-option" data-model-id="{{ model_id }}" onclick="modelOptionClick('{{ model_id }}', 'image')">
-                <input type="radio" name="imageModel" value="{{ model_id }}" id="imageRadio_{{ model_id }}"> {{ model_name }}
+            <div class="model-list-container">
+                {% for model_id, model_name in image_models %}
+                <div class="model-option" data-model-id="{{ model_id }}" onclick="modelOptionClick('{{ model_id }}', 'image')">
+                    {{ model_name }}
+                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
             <button class="btn" onclick="hideModelSelector('image')">Cancel</button>
         </div>
     </div>
@@ -403,6 +407,7 @@
 
         const PREMIUM_MODELS = [
             "claude-sonnet-4-20250514-thinking",
+            "claude-sonnet-4-5-20250929-thinking",
             "o3-high",
             "gemini-2.5-pro-preview-05-06",
             "grok-4-0709",
@@ -421,7 +426,11 @@
         const FREE_MODELS = [
             "gpt-4o-mini-search-preview-2025-03-11",
             "gpt-5-nano:free",
-            "deepseek-v3.1:free"
+            "deepseek-v3.1:free",
+            "gpt-oss-120b:free",
+            "deepseek-r1-0528:free",
+            "qwen3-coder-480b-a35b-instruct:free",
+            "kimi-k2-instruct-0905:free"
         ];
 
         // Parse model ID to name mapping from JSON script tag
@@ -1328,17 +1337,22 @@
                     modal.style.transition = 'opacity 0.2s ease-out';
                     modal.style.opacity = '1';
                 }, 10);
-                // Highlight and check the current chat model only
+                // Highlight the current chat model only
                 setTimeout(() => {
-                    for (const el of document.getElementsByName('chatModel')) {
-                        if (el.value === currentChatModel) {
-                            el.checked = true;
-                            el.parentElement.classList.add('selected');
+                    const modelOptions = document.querySelectorAll('#chatModelModal .model-option');
+                    modelOptions.forEach(option => {
+                        const modelId = option.getAttribute('data-model-id');
+                        if (modelId === currentChatModel) {
+                            option.classList.add('selected');
                         } else {
-                            el.checked = false;
-                            el.parentElement.classList.remove('selected');
+                            option.classList.remove('selected');
+                            // Remove indicator if it exists
+                            const indicator = option.querySelector('.current-indicator');
+                            if (indicator) {
+                                indicator.remove();
+                            }
                         }
-                    }
+                    });
                 }, 0);
             } else if (type === 'image') {
                 const modal = document.getElementById('imageModelModal');
@@ -1348,17 +1362,22 @@
                     modal.style.transition = 'opacity 0.2s ease-out';
                     modal.style.opacity = '1';
                 }, 10);
-                // Highlight and check the current image model only
+                // Highlight the current image model only
                 setTimeout(() => {
-                    for (const el of document.getElementsByName('imageModel')) {
-                        if (el.value === currentImageModel) {
-                            el.checked = true;
-                            el.parentElement.classList.add('selected');
+                    const modelOptions = document.querySelectorAll('#imageModelModal .model-option');
+                    modelOptions.forEach(option => {
+                        const modelId = option.getAttribute('data-model-id');
+                        if (modelId === currentImageModel) {
+                            option.classList.add('selected');
                         } else {
-                            el.checked = false;
-                            el.parentElement.classList.remove('selected');
+                            option.classList.remove('selected');
+                            // Remove indicator if it exists
+                            const indicator = option.querySelector('.current-indicator');
+                            if (indicator) {
+                                indicator.remove();
+                            }
                         }
-                    }
+                    });
                 }, 0);
             }
         }
@@ -1387,27 +1406,37 @@
                 currentChatModel = modelId;
                 document.getElementById('currentModel').textContent = MODEL_ID_TO_NAME[modelId] || modelId;
                 // Update chat model UI only
-                for (const el of document.getElementsByName('chatModel')) {
-                    if (el.value === modelId) {
-                        el.checked = true;
-                        el.parentElement.classList.add('selected');
+                const modelOptions = document.querySelectorAll('#chatModelModal .model-option');
+                modelOptions.forEach(option => {
+                    const optionModelId = option.getAttribute('data-model-id');
+                    if (optionModelId === modelId) {
+                        option.classList.add('selected');
                     } else {
-                        el.checked = false;
-                        el.parentElement.classList.remove('selected');
+                        option.classList.remove('selected');
+                        // Remove indicator if it exists
+                        const indicator = option.querySelector('.current-indicator');
+                        if (indicator) {
+                            indicator.remove();
+                        }
                     }
-                }
+                });
             } else if (type === 'image') {
                 currentImageModel = modelId;
                 // Update image model UI only
-                for (const el of document.getElementsByName('imageModel')) {
-                    if (el.value === modelId) {
-                        el.checked = true;
-                        el.parentElement.classList.add('selected');
+                const modelOptions = document.querySelectorAll('#imageModelModal .model-option');
+                modelOptions.forEach(option => {
+                    const optionModelId = option.getAttribute('data-model-id');
+                    if (optionModelId === modelId) {
+                        option.classList.add('selected');
                     } else {
-                        el.checked = false;
-                        el.parentElement.classList.remove('selected');
+                        option.classList.remove('selected');
+                        // Remove indicator if it exists
+                        const indicator = option.querySelector('.current-indicator');
+                        if (indicator) {
+                            indicator.remove();
+                        }
                     }
-                }
+                });
             }
             fetchWithCode('/set_model', {
                 method: 'POST',
