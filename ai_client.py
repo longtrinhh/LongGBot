@@ -53,12 +53,27 @@ async def ask_ai_stream(question: str, model: str = MODEL_NAME, context=None, im
                         })
                     break
     
+    # Disable web search if an image is provided or a document is present in context
+    web_search_flag = True
+    if image_data:
+        web_search_flag = False
+    else:
+        try:
+            # Detect injected document system message
+            if any(
+                m.get('role') == 'system' and isinstance(m.get('content'), str) and '--- DOCUMENT CONTENT START ---' in m.get('content', '')
+                for m in messages
+            ):
+                web_search_flag = False
+        except Exception:
+            pass
+
     data = {
         "model": model,
         "messages": messages,
         "max_tokens": 10000,
         "temperature": 0.7,
-        "web_search": True,
+        "web_search": web_search_flag,
         "stream": True,
         "system": "You are a helpful AI assistant. Use proper markdown formatting in your responses including headers (##, ###), bold (**text**), italic (*text*), code blocks (```), inline code (`code`), lists (- or 1.), and tables when appropriate. You can think through problems step by step and provide detailed, accurate responses. You can also analyze images and answer questions about them."
     }
@@ -124,12 +139,26 @@ async def ask_ai(question: str, model: str = MODEL_NAME, context=None, image_dat
                         })
                     break
     
+    # Disable web search if an image is provided or a document is present in context
+    web_search_flag = True
+    if image_data:
+        web_search_flag = False
+    else:
+        try:
+            if any(
+                m.get('role') == 'system' and isinstance(m.get('content'), str) and '--- DOCUMENT CONTENT START ---' in m.get('content', '')
+                for m in messages
+            ):
+                web_search_flag = False
+        except Exception:
+            pass
+
     data = {
         "model": model,
         "messages": messages,
         "max_tokens": 10000,
         "temperature": 0.7,
-        "web_search": True,
+        "web_search": web_search_flag,
         "system": "You are a helpful AI assistant. Use proper markdown formatting in your responses including headers (##, ###), bold (**text**), italic (*text*), code blocks (```), inline code (`code`), lists (- or 1.), and tables when appropriate. You can think through problems step by step and provide detailed, accurate responses. You can also analyze images and answer questions about them."
     }
     
