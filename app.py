@@ -156,23 +156,33 @@ def validate_code():
 
 @app.route('/conversations', methods=['GET'])
 def list_conversations():
-    user_key = get_user_key()
-    conversations = get_firestore_conversations_for_user(user_key)
-    def get_sort_key(conv):
-        return conv.get('created_at') or conv.get('last_updated') or conv.get('conversation_id')
-    conversations = sorted(conversations, key=get_sort_key, reverse=False)
-    conversations = conversations[::1]
-    summaries = []
-    for conv in conversations:
-        messages = conv.get('messages', [])
-        summaries.append({
-            'conversation_id': conv.get('conversation_id'),
-            'title': conv.get('title', ''),
-            'first_message': messages[0]['content'] if messages else '',
-            'last_updated': conv.get('last_updated', None),
-            'created_at': conv.get('created_at', None)
-        })
-    return jsonify({'conversations': summaries})
+    try:
+        user_key = get_user_key()
+        conversations = get_firestore_conversations_for_user(user_key)
+        
+        # Handle case where Firestore is unavailable
+        if conversations is None:
+            conversations = []
+        
+        def get_sort_key(conv):
+            return conv.get('created_at') or conv.get('last_updated') or conv.get('conversation_id')
+        conversations = sorted(conversations, key=get_sort_key, reverse=False)
+        conversations = conversations[::1]
+        summaries = []
+        for conv in conversations:
+            messages = conv.get('messages', [])
+            summaries.append({
+                'conversation_id': conv.get('conversation_id'),
+                'title': conv.get('title', ''),
+                'first_message': messages[0]['content'] if messages else '',
+                'last_updated': conv.get('last_updated', None),
+                'created_at': conv.get('created_at', None)
+            })
+        return jsonify({'conversations': summaries})
+    except Exception as e:
+        logger.error(f"Error listing conversations: {e}", exc_info=True)
+        # Return empty list instead of error to allow app to continue
+        return jsonify({'conversations': []})
 
 @app.route('/conversations', methods=['POST'])
 def new_conversation():
@@ -189,9 +199,13 @@ def new_conversation():
 
 @app.route('/conversations/<conversation_id>', methods=['GET'])
 def get_conversation(conversation_id):
-    user_key = get_user_key()
-    messages = get_firestore_conversation(user_key, conversation_id)
-    return jsonify({'messages': messages})
+    try:
+        user_key = get_user_key()
+        messages = get_firestore_conversation(user_key, conversation_id)
+        return jsonify({'messages': messages if messages is not None else []})
+    except Exception as e:
+        logger.error(f"Error getting conversation {conversation_id}: {e}", exc_info=True)
+        return jsonify({'messages': [], 'error': 'Unable to load conversation'})
 
 @app.route('/conversations/<conversation_id>/message', methods=['POST'])
 def add_message(conversation_id):
@@ -248,8 +262,10 @@ def chat():
             # Set the conversation title from the first user message
             set_conversation_title_if_default(user_key, conversation_id, message)
         
-        # Limit context for free models to stay under 32k tokens
-        if not premium and is_free_model(model):
+        # Limit context for free models to stay under 32k tokens, premium to 100k tokens
+        if premium:
+            context = limit_context_to_tokens(context, max_tokens=100000)
+        elif is_free_model(model):
             context = limit_context_to_tokens(context, max_tokens=30000)
             
         image_keywords = [
@@ -293,8 +309,10 @@ def chat():
                 # Mark as injected for this conversation
                 document['injected_conversation_id'] = conversation_id
                 
-                # Re-apply context limiting after document injection for free models
-                if not premium and is_free_model(model):
+                # Re-apply context limiting after document injection
+                if premium:
+                    context = limit_context_to_tokens(context, max_tokens=100000)
+                elif is_free_model(model):
                     context = limit_context_to_tokens(context, max_tokens=30000)
 
         final_message = message
@@ -342,8 +360,10 @@ def chat_stream():
             # Set the conversation title from the first user message
             set_conversation_title_if_default(user_key, conversation_id, message)
         
-        # Limit context for free models to stay under 32k tokens
-        if not premium and is_free_model(model):
+        # Limit context for free models to stay under 32k tokens, premium to 100k tokens
+        if premium:
+            context = limit_context_to_tokens(context, max_tokens=100000)
+        elif is_free_model(model):
             context = limit_context_to_tokens(context, max_tokens=30000)
                 
         image_keywords = [
@@ -385,8 +405,10 @@ def chat_stream():
                 context = (context or []) + [{ 'role': 'system', 'content': system_text }]
                 document['injected_conversation_id'] = conversation_id
                 
-                # Re-apply context limiting after document injection for free models
-                if not premium and is_free_model(model):
+                # Re-apply context limiting after document injection
+                if premium:
+                    context = limit_context_to_tokens(context, max_tokens=100000)
+                elif is_free_model(model):
                     context = limit_context_to_tokens(context, max_tokens=30000)
 
         final_message = message
@@ -685,18 +707,22 @@ def upload_document():
 
 @app.route('/history', methods=['GET'])
 def get_history():
-    user_key = get_user_key()
-    conversation_id = request.args.get('conversation_id')
-    if conversation_id:
-        history = get_firestore_conversation(user_key, conversation_id)
-    else:
-        conversations = get_firestore_conversations_for_user(user_key)
-        if conversations:
-            conversation_id = conversations[0]['conversation_id']
+    try:
+        user_key = get_user_key()
+        conversation_id = request.args.get('conversation_id')
+        if conversation_id:
             history = get_firestore_conversation(user_key, conversation_id)
         else:
-            history = []
-    return jsonify({'history': history, 'conversation_id': conversation_id})
+            conversations = get_firestore_conversations_for_user(user_key)
+            if conversations:
+                conversation_id = conversations[0]['conversation_id']
+                history = get_firestore_conversation(user_key, conversation_id)
+            else:
+                history = []
+        return jsonify({'history': history if history is not None else [], 'conversation_id': conversation_id})
+    except Exception as e:
+        logger.error(f"Error getting history: {e}", exc_info=True)
+        return jsonify({'history': [], 'conversation_id': None, 'error': 'Unable to load history'})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 
