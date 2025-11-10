@@ -227,6 +227,8 @@ def get_full_conversation(user_key: str) -> List[Dict]:
 # Simple cache for conversations (invalidate when new conversation created/deleted)
 _conversation_cache = {}
 _cache_timeout = 300  # 5 minutes
+_individual_conv_cache = {}  # Cache for individual conversation messages
+_individual_cache_timeout = 60  # 1 minute for individual conversations
 
 def get_firestore_conversations_for_user(user_id):
     """Get conversations for a user with error handling and caching"""
@@ -300,34 +302,66 @@ def _invalidate_user_cache(user_id):
     cache_key = f"conversations_{user_id}"
     if cache_key in _conversation_cache:
         del _conversation_cache[cache_key]
+    
+    # Also invalidate individual conversation caches for this user
+    keys_to_delete = [key for key in _individual_conv_cache.keys() if key.startswith(f"{user_id}__")]
+    for key in keys_to_delete:
+        del _individual_conv_cache[key]
 
 def get_firestore_conversation(user_id, conversation_id):
-    """Get a specific conversation with error handling"""
+    """Get a specific conversation with error handling and caching"""
     global _client_last_error
+    
+    cache_key = f"{user_id}__{conversation_id}"
+    current_time = time.time()
+    
+    # Check cache first
+    if cache_key in _individual_conv_cache:
+        cached_data, timestamp = _individual_conv_cache[cache_key]
+        if current_time - timestamp < _individual_cache_timeout:
+            logger.debug(f"Returning cached conversation {conversation_id}")
+            return cached_data
     
     client = get_firestore_client()
     if not client:
         logger.error("Firestore client not available")
+        # Return cached data if available, even if expired
+        if cache_key in _individual_conv_cache:
+            return _individual_conv_cache[cache_key][0]
         return []
     
     try:
-        doc_ref = client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
+        doc_ref = client.collection(FIRESTORE_COLLECTION).document(cache_key)
         doc = doc_ref.get(timeout=10.0)  # 10 second timeout
         if doc.exists:
-            return doc.to_dict().get("messages", [])
+            messages = doc.to_dict().get("messages", [])
+            # Cache the result
+            _individual_conv_cache[cache_key] = (messages, current_time)
+            return messages
         return []
     except exceptions.RetryError as e:
         logger.error(f"Firestore RetryError getting conversation {conversation_id}: {e}")
         _client_last_error = time.time()
+        # Return cached data if available
+        if cache_key in _individual_conv_cache:
+            return _individual_conv_cache[cache_key][0]
         return []
     except Exception as e:
         logger.error(f"Error getting conversation {conversation_id}: {e}", exc_info=True)
         _client_last_error = time.time()
+        # Return cached data if available
+        if cache_key in _individual_conv_cache:
+            return _individual_conv_cache[cache_key][0]
         return []
 
 def add_firestore_message(user_id, conversation_id, message):
     """Add a message to a conversation with error handling"""
     global _client_last_error
+    
+    # Invalidate cache when adding message
+    cache_key = f"{user_id}__{conversation_id}"
+    if cache_key in _individual_conv_cache:
+        del _individual_conv_cache[cache_key]
     
     client = get_firestore_client()
     if not client:
@@ -335,7 +369,7 @@ def add_firestore_message(user_id, conversation_id, message):
         return False
     
     try:
-        doc_ref = client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
+        doc_ref = client.collection(FIRESTORE_COLLECTION).document(cache_key)
         
         # Use atomic update to append message - more efficient than read-modify-write
         try:

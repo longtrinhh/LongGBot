@@ -7,6 +7,8 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}?v={% if config.ENV == 'development' %}{{ range(1, 1000) | random }}{% else %}2.0{% endif %}" rel="stylesheet">
     <link rel="icon" type="image/jpg" href="{{ url_for('static', filename='img/longgbot_log.jpg') }}" sizes="32x32">
+    <!-- KaTeX for LaTeX math rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
     <style>
         .copy-code-btn, .copy-markdown-btn, .copy-plain-btn {
             background: #f5f5f5;
@@ -63,6 +65,16 @@
             }
         }
         pre { position: relative; }
+        
+        /* KaTeX math styling */
+        .katex { font-size: 1.1em; }
+        .katex-display { 
+            overflow-x: auto; 
+            overflow-y: hidden; 
+            padding: 10px 0;
+            margin: 1em 0;
+        }
+        .message-content .katex { color: inherit; }
     </style>
 </head>
 <body>
@@ -278,6 +290,9 @@
 
     <!-- External libraries -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- KaTeX for LaTeX math rendering -->
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
 
     <!-- Application JavaScript -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>

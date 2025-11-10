@@ -24,62 +24,39 @@ function debounce(func, wait) {
     };
 }
 
-// Add subtle particle effect
-function createParticles() {
-    const particlesContainer = document.createElement('div');
-    particlesContainer.id = 'particles';
-    particlesContainer.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: -1;
-        overflow: hidden;
-    `;
-    document.body.appendChild(particlesContainer);
+// Throttle function for high-frequency events (better than debounce for scrolling)
+function throttle(func, limit) {
+    let inThrottle;
+    return function(...args) {
+        if (!inThrottle) {
+            func.apply(this, args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
 
-    for (let i = 0; i < 20; i++) {
-        const particle = document.createElement('div');
-        particle.style.cssText = `
-            position: absolute;
-            width: 4px;
-            height: 4px;
-            background: rgba(74, 74, 138, 0.1);
-            border-radius: 50%;
-            animation: float ${5 + Math.random() * 10}s linear infinite;
-            left: ${Math.random() * 100}%;
-            top: ${Math.random() * 100}%;
-        `;
-        particlesContainer.appendChild(particle);
+// Helper function to render LaTeX math in an element
+function renderMath(element) {
+    if (typeof renderMathInElement !== 'undefined') {
+        try {
+            renderMathInElement(element, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '\\[', right: '\\]', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false}
+                ],
+                throwOnError: false,
+                strict: false
+            });
+        } catch (e) {
+            console.warn('Math rendering error:', e);
+        }
     }
 }
 
-// Add floating animation for particles
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes float {
-        0% {
-            transform: translateY(100vh) rotate(0deg);
-            opacity: 0;
-        }
-        10% {
-            opacity: 1;
-        }
-        90% {
-            opacity: 1;
-        }
-        100% {
-            transform: translateY(-100px) rotate(360deg);
-            opacity: 0;
-        }
-    }
-`;
-document.head.appendChild(style);
-
-// Initialize particles on page load
-window.addEventListener('load', createParticles);
+// Particle effects removed for better performance
 
 const PREMIUM_MODELS = [
     "claude-sonnet-4-20250514-thinking",
@@ -114,10 +91,16 @@ const MODEL_ID_TO_NAME = JSON.parse(document.getElementById('model-names').textC
 
 // Move hideAllSelectors to the top to avoid reference errors
 function hideAllSelectors() {
-    getCachedElement('chatModelModal').style.display = 'none';
-    getCachedElement('imageModelModal').style.display = 'none';
-    getCachedElement('imageUploadModal').style.display = 'none';
-    getCachedElement('imageGeneratorModal').style.display = 'none';
+    const chatModal = getCachedElement('chatModelModal');
+    const imageModal = getCachedElement('imageModelModal');
+    const uploadModal = getCachedElement('imageUploadModal');
+    const genModal = getCachedElement('imageGeneratorModal');
+    
+    // Batch DOM updates for better performance
+    if (chatModal) chatModal.style.display = 'none';
+    if (imageModal) imageModal.style.display = 'none';
+    if (uploadModal) uploadModal.style.display = 'none';
+    if (genModal) genModal.style.display = 'none';
 }
 
 // Helper function to hide sidebar on mobile when modals are opened
@@ -130,13 +113,11 @@ function hideSidebarOnMobile() {
     }
 }
 
-// Initialize micro-interactions on page load
-window.addEventListener('load', addMicroInteractions);
+// Initialize micro-interactions on page load (use DOMContentLoaded instead of load for faster execution)
+document.addEventListener('DOMContentLoaded', addMicroInteractions);
 
 // On page load, start with fresh conversation (don't load history)
 window.onload = function() {
-    console.log('Page loaded, ready for fresh conversation...');
-    
     // Clear any existing image indicator
     const indicator = document.getElementById('imageIndicator');
     if (indicator) {
@@ -146,8 +127,6 @@ window.onload = function() {
     // Don't create conversation yet - wait for user's first message
     // This prevents empty conversations from being saved
     window.currentConversationId = null;
-    
-    console.log('Ready for new conversation (will create on first message)');
 };
 
 function handleKeyPress(event) {
@@ -158,16 +137,42 @@ function handleKeyPress(event) {
 }
 
 function handlePaste(event) {
-    // Premium gate for paste-upload
+    // Get clipboard data
+    const clipboardData = event.clipboardData || event.originalEvent?.clipboardData;
+    if (!clipboardData || !clipboardData.items) {
+        // No clipboard data or items, allow default text paste
+        return;
+    }
+    
+    const items = clipboardData.items;
+    
+    // First check if there's actually an image in the clipboard
+    let hasImage = false;
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf('image') !== -1) {
+            hasImage = true;
+            break;
+        }
+    }
+    
+    // If no image, allow normal text paste
+    if (!hasImage) {
+        return;
+    }
+    
+    // Only prevent default and check premium for images
+    event.preventDefault();
+    
+    // Premium gate for paste-upload (only for images)
     if (!hasPremiumAccess()) {
         showAlert('Pasting images is a premium feature. Enter a premium code to unlock.');
         showCodeModal();
-        event.preventDefault();
         return;
     }
-    const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+    
+    // Process the image
     for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
+        if (items[i].type && items[i].type.indexOf('image') !== -1) {
             const file = items[i].getAsFile();
             if (file) {
                 // Validate file type - only accept image files
@@ -334,8 +339,8 @@ function stopResponse() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({})
-        }).catch(error => {
-            console.log('Error notifying backend of cancellation:', error);
+        }).catch(() => {
+            // Silently handle cancellation error
         });
         
         // Add a message indicating the response was stopped
@@ -344,7 +349,6 @@ function stopResponse() {
 }
 
 function sendMessage() {
-    console.log('sendMessage called');
     const input = getCachedElement('messageInput');
     const sendBtn = getCachedElement('sendBtn');
     const stopBtn = getCachedElement('stopBtn');
@@ -506,16 +510,38 @@ function sendMessage() {
                                     hasReceivedFirstChunk = true;
                                 }
                                 fullResponse += data.chunk;
-                                // Update the message content with markdown rendering
+                                // Optimized markdown parsing: use requestAnimationFrame to batch updates
                                 if (messageContent) {
-                                    messageContent.innerHTML = marked.parse(fullResponse);
+                                    // Cancel any pending parse
+                                    if (window._parseTimeout) {
+                                        cancelAnimationFrame(window._parseTimeout);
+                                    }
+                                    
+                                    // Schedule markdown parse on next animation frame
+                                    // This batches rapid updates together
+                                    window._parseTimeout = requestAnimationFrame(() => {
+                                        messageContent.innerHTML = marked.parse(fullResponse);
+                                        renderMath(messageContent);
+                                        smoothScrollToBottom(document.getElementById('chatMessages'), false);
+                                    });
                                 }
-                                // Only auto-scroll if user is near bottom (don't force during streaming)
-                                smoothScrollToBottom(document.getElementById('chatMessages'), false);
                             } else if (data.done) {
                                 if (data.conversation_id && !window.currentConversationId) {
                                     window.currentConversationId = data.conversation_id;
                                 }
+                                
+                                // Cancel any pending parse
+                                if (window._parseTimeout) {
+                                    cancelAnimationFrame(window._parseTimeout);
+                                    window._parseTimeout = null;
+                                }
+                                
+                                // Final markdown parse when streaming completes
+                                if (messageContent && fullResponse) {
+                                    messageContent.innerHTML = marked.parse(fullResponse);
+                                    renderMath(messageContent);
+                                }
+                                
                                 // Remove loading state
                                 sendBtn.classList.remove('loading');
                                 sendBtn.disabled = false;
@@ -850,6 +876,12 @@ function addMessage(sender, content, type = 'normal', imageData = null) {
         // Use marked library to render markdown
         htmlContent = marked.parse(htmlContent);
         
+        // Render LaTeX math
+        const tempMathDiv = document.createElement('div');
+        tempMathDiv.innerHTML = htmlContent;
+        renderMath(tempMathDiv);
+        htmlContent = tempMathDiv.innerHTML;
+        
         // Extract sources and linkify references (keep this for compatibility)
         const sources = extractSources(htmlContent);
         htmlContent = linkifyReferences(htmlContent, sources);
@@ -1059,7 +1091,6 @@ function showModelSelector(type) {
 }
 
 function hideModelSelector(type) {
-    console.log('hideModelSelector called with type:', type);
     if (type === 'chat') {
         const modal = document.getElementById('chatModelModal');
         modal.style.transition = 'opacity 0.2s ease-out';
@@ -1134,7 +1165,6 @@ function selectModel(modelId, type) {
 }
 
 function clearContext() {
-    console.log('clearContext called');
     if (confirm('Are you sure you want to clear the chat history?')) {
         fetch('/clear_context', {
             method: 'POST',
@@ -1193,7 +1223,6 @@ function showImageUpload() {
 }
 
 function hideImageUpload() {
-    console.log('hideImageUpload called');
     const modal = document.getElementById('imageUploadModal');
     modal.style.transition = 'opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
     modal.style.opacity = '0';
@@ -1208,7 +1237,6 @@ function uploadImage() {
         showCodeModal();
         return;
     }
-    console.log('uploadImage called');
     const fileInput = document.getElementById('imageFile');
     const file = fileInput.files[0];
     
@@ -1255,14 +1283,12 @@ function uploadImage() {
     })
     .then(response => {
         clearTimeout(timeoutId); // Clear timeout on successful response
-        console.log('Upload response status:', response.status);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
         return response.json();
     })
     .then(data => {
-        console.log('Upload response data:', data);
         // Remove loading state
         if (uploadBtn) {
             uploadBtn.classList.remove('loading');
@@ -1397,7 +1423,6 @@ function showImageGenerator() {
 }
 
 function hideImageGenerator() {
-    console.log('hideImageGenerator called');
     const modal = document.getElementById('imageGeneratorModal');
     modal.style.transition = 'opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
     modal.style.opacity = '0';
@@ -1468,7 +1493,6 @@ function generateImage() {
 }
 
 function testClick() {
-    console.log('testClick called');
     alert('Test click works! If you see this, clicking is working.');
     addMessage('assistant', 'Test click successful! Clicking is working properly.');
 }
@@ -1639,13 +1663,7 @@ function updatePremiumIndicator() {
     const indicatorMobile = document.getElementById('premiumIndicatorMobile');
     const enterCodeBtnMobile = document.getElementById('enterCodeBtnMobile');
     
-    console.log('updatePremiumIndicator called');
-    console.log('hasPremiumAccess():', hasPremiumAccess());
-    console.log('indicator:', indicator);
-    console.log('indicatorMobile:', indicatorMobile);
-    
     if (hasPremiumAccess()) {
-        console.log('Setting premium indicators to active');
         if (indicator) {
             indicator.classList.add('active');
             indicator.style.display = 'inline-flex';
@@ -1657,7 +1675,6 @@ function updatePremiumIndicator() {
         if (enterCodeBtn) enterCodeBtn.style.display = 'none';
         if (enterCodeBtnMobile) enterCodeBtnMobile.style.display = 'none';
     } else {
-        console.log('Setting premium indicators to inactive - hiding them');
         if (indicator) {
             indicator.classList.remove('active');
             indicator.style.display = 'none';
@@ -1673,25 +1690,10 @@ function updatePremiumIndicator() {
 
 // Call updatePremiumIndicator on page load and after DOM is ready
 window.addEventListener('DOMContentLoaded', function() {
-    console.log('DOMContentLoaded - updating premium indicator');
     updatePremiumIndicator();
     
     // Initialize scroll monitoring for user behavior tracking
     initScrollMonitoring();
-    
-    // Additional mobile-specific initialization
-    if (window.innerWidth <= 700) {
-        console.log('Mobile device detected - ensuring mobile premium indicator is properly initialized');
-        const indicatorMobile = document.getElementById('premiumIndicatorMobile');
-        const enterCodeBtnMobile = document.getElementById('enterCodeBtnMobile');
-        
-        if (indicatorMobile) {
-            console.log('Mobile premium indicator found:', indicatorMobile);
-        }
-        if (enterCodeBtnMobile) {
-            console.log('Mobile enter code button found:', enterCodeBtnMobile);
-        }
-    }
     
     var input = document.getElementById('messageInput');
     var chatMessages = document.getElementById('chatMessages');
@@ -1735,14 +1737,12 @@ window.addEventListener('DOMContentLoaded', function() {
 });
 
 window.addEventListener('load', function() {
-    console.log('Window loaded - updating premium indicator');
     updatePremiumIndicator();
 });
 
 // Add resize listener to handle mobile premium indicator on screen size changes
 window.addEventListener('resize', function() {
     if (window.innerWidth <= 700) {
-        console.log('Screen resized to mobile - updating premium indicator');
         updatePremiumIndicator();
     }
 });

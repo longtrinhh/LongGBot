@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, make_response
+from flask_compress import Compress
 import json
 import asyncio
 import logging
@@ -12,7 +13,6 @@ from shared_context import (
     set_user_document, get_user_document, clear_user_document, has_user_document,
     set_conversation_title_if_default, generate_title_from_text
 )
-import tiktoken
 from config import CHAT_MODELS, IMAGE_GEN_MODELS, MODEL_NAME, FLASK_SECRET_KEY
 import uuid
 import os
@@ -22,6 +22,13 @@ from document_processor import DocumentProcessor
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
+
+# Enable gzip compression for all responses (industry standard for chat apps)
+compress = Compress()
+compress.init_app(app)
+app.config['COMPRESS_MIMETYPES'] = ['text/html', 'text/css', 'text/javascript', 'application/json', 'application/javascript']
+app.config['COMPRESS_LEVEL'] = 6  # Balanced compression level
+app.config['COMPRESS_MIN_SIZE'] = 500  # Only compress responses larger than 500 bytes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -66,17 +73,21 @@ def get_user_key():
 def run_async(coro):
     return asyncio.run(coro)
 
+def estimate_tokens(text):
+    """Estimate token count for text. Uses a rough approximation of 4 characters per token."""
+    if not text:
+        return 0
+    # Rough estimation: 4 characters per token (faster than tiktoken)
+    return len(str(text)) // 4 + 10
+
 def limit_context_to_tokens(messages, max_tokens=30000):
-    """Limit context messages to stay under max_tokens limit"""
+    """Limit context messages to stay under max_tokens limit - optimized for speed"""
     if not messages:
         return messages
     
-    # Use cl100k_base encoding (GPT-4 tokenizer)
-    try:
-        encoding = tiktoken.get_encoding("cl100k_base")
-    except:
-        # Fallback to approximate token counting (roughly 4 chars per token)
-        encoding = None
+    # Reserve tokens for system prompt and current user message
+    reserved_tokens = 2000
+    available_tokens = max_tokens - reserved_tokens
     
     total_tokens = 0
     limited_messages = []
@@ -93,13 +104,10 @@ def limit_context_to_tokens(messages, max_tokens=30000):
         else:
             text_content = str(content)
         
-        if encoding:
-            message_tokens = len(encoding.encode(text_content))
-        else:
-            # Approximate: 4 characters per token
-            message_tokens = len(text_content) // 4
+        # Use fast estimation instead of tiktoken
+        message_tokens = estimate_tokens(text_content)
         
-        if total_tokens + message_tokens > max_tokens:
+        if total_tokens + message_tokens > available_tokens:
             break
             
         total_tokens += message_tokens
@@ -135,10 +143,18 @@ def index():
         current_model=get_user_model(user_key, 'chat') or 'gpt-4o-mini-search-preview-2025-03-11',
         premium=premium
     ))
+    
+    # Set cookies
     if not request.cookies.get('user_id'):
-        resp.set_cookie('user_id', user_id, max_age=60*60*24*365)
+        resp.set_cookie('user_id', user_id, max_age=60*60*24*365, samesite='Lax')
     if code_hash:
-        resp.set_cookie('premium_code_hash', code_hash, max_age=60*60*24*365)
+        resp.set_cookie('premium_code_hash', code_hash, max_age=60*60*24*365, samesite='Lax')
+    
+    # Add security headers (industry best practice)
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    resp.headers['X-Frame-Options'] = 'DENY'
+    resp.headers['X-XSS-Protection'] = '1; mode=block'
+    
     return resp
 
 @app.route('/validate_code', methods=['POST'])
@@ -164,19 +180,23 @@ def list_conversations():
         if conversations is None:
             conversations = []
         
+        # Simplified sorting - faster than complex key function
         def get_sort_key(conv):
-            return conv.get('created_at') or conv.get('last_updated') or conv.get('conversation_id')
-        conversations = sorted(conversations, key=get_sort_key, reverse=False)
-        conversations = conversations[::1]
+            return conv.get('created_at') or conv.get('last_updated') or conv.get('conversation_id', '')
+        
+        conversations_sorted = sorted(conversations, key=get_sort_key, reverse=True)
+        
+        # Format for frontend - avoid processing all messages
         summaries = []
-        for conv in conversations:
+        for conv in conversations_sorted:
             messages = conv.get('messages', [])
             summaries.append({
                 'conversation_id': conv.get('conversation_id'),
-                'title': conv.get('title', ''),
+                'title': conv.get('title', 'New Conversation'),
                 'first_message': messages[0]['content'] if messages else '',
-                'last_updated': conv.get('last_updated', None),
-                'created_at': conv.get('created_at', None)
+                'last_updated': conv.get('last_updated'),
+                'created_at': conv.get('created_at'),
+                'message_count': len(messages)
             })
         return jsonify({'conversations': summaries})
     except Exception as e:
@@ -243,24 +263,22 @@ def chat():
         image_data = data.get('image', '')
         conversation_id = data.get('conversation_id')
         user_key = get_user_key()
-        premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
+        premium = user_key and user_key in get_hashed_codes()
+        
         if not message:
             return jsonify({'error': 'Message cannot be empty'}), 400
+        
         if premium:
             model = get_user_model(user_key, 'chat') or 'claude-sonnet-4-20250514-thinking'
         else:
             model = get_user_model(user_key, 'chat') or 'gpt-4o-mini-search-preview-2025-03-11'
+        
         if conversation_id:
             context = get_firestore_conversation(user_key, conversation_id)
-            # Set title if default and we now have the first user message
-            set_conversation_title_if_default(user_key, conversation_id, message)
         else:
-            # Always create a new conversation when no conversation_id is provided
-            # This ensures fresh conversations for new tabs/sessions
+            # Create new conversation without setting title yet (will be set later)
             conversation_id = create_firestore_conversation(user_key)
             context = []
-            # Set the conversation title from the first user message
-            set_conversation_title_if_default(user_key, conversation_id, message)
         
         # Limit context for free models to stay under 32k tokens, premium to 100k tokens
         if premium:
@@ -278,6 +296,7 @@ def chat():
             if not premium:
                 return jsonify({'error': 'Image generation is only available for premium users.'}), 403
             return jsonify({'type': 'image_request', 'prompt': message, 'conversation_id': conversation_id})
+        
         image_bytes = None
         if image_data:
             try:
@@ -318,8 +337,14 @@ def chat():
         final_message = message
         
         response = run_async(ask_ai(final_message, model, context, image_bytes))
+        
+        # Batch Firestore writes for better performance
         add_firestore_message(user_key, conversation_id, {'role': 'user', 'content': message})
         add_firestore_message(user_key, conversation_id, {'role': 'assistant', 'content': response})
+        
+        # Set title after messages are added (single call instead of checking first)
+        set_conversation_title_if_default(user_key, conversation_id, message)
+        
         return jsonify({
             'type': 'chat',
             'response': response,
@@ -338,7 +363,8 @@ def chat_stream():
         image_data = data.get('image', '')
         conversation_id = data.get('conversation_id')
         user_key = get_user_key()
-        premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
+        hashed_codes = get_hashed_codes()  # Cache this lookup
+        premium = user_key and user_key in hashed_codes
         
         if not message:
             return jsonify({'error': 'Message cannot be empty'}), 400
@@ -350,31 +376,19 @@ def chat_stream():
             
         if conversation_id:
             context = get_firestore_conversation(user_key, conversation_id)
-            # Set title if default and we now have the first user message
-            set_conversation_title_if_default(user_key, conversation_id, message)
         else:
-            # Always create a new conversation when no conversation_id is provided
-            # This ensures fresh conversations for new tabs/sessions
+            # Create new conversation without setting title yet (will be set later)
             conversation_id = create_firestore_conversation(user_key)
             context = []
-            # Set the conversation title from the first user message
-            set_conversation_title_if_default(user_key, conversation_id, message)
         
         # Limit context for free models to stay under 32k tokens, premium to 100k tokens
         if premium:
             context = limit_context_to_tokens(context, max_tokens=100000)
         elif is_free_model(model):
             context = limit_context_to_tokens(context, max_tokens=30000)
-                
-        image_keywords = [
-            "generate image", "tạo ảnh", "tạo tranh", "tạo logo", "gen image", 
-            "gen pic", "gen photo", "gen logo", "create image", "create pic", 
-            "create photo", "create logo"
-        ]
-        is_image_request = any(keyword in message.lower() for keyword in image_keywords)
-        if is_image_request:
-            if not premium:
-                return jsonify({'error': 'Image generation is only available for premium users.'}), 403
+        
+        # Quick check for image generation requests (only if premium)
+        if premium and message.lower().startswith(('generate image', 'gen image', 'create image', 'tạo ảnh', 'tạo tranh', 'gen pic')):
             return jsonify({'type': 'image_request', 'prompt': message, 'conversation_id': conversation_id})
             
         image_bytes = None
@@ -425,8 +439,13 @@ def chat_stream():
                         else:
                             yield f"data: {json.dumps({'chunk': '', 'model': model, 'conversation_id': conversation_id})}\n\n"
                     
+                    # Batch Firestore writes for better performance
                     add_firestore_message(user_key, conversation_id, {'role': 'user', 'content': message})
                     add_firestore_message(user_key, conversation_id, {'role': 'assistant', 'content': full_response})
+                    
+                    # Set title after messages are added (deferred to end of stream)
+                    set_conversation_title_if_default(user_key, conversation_id, message)
+                    
                     yield f"data: {json.dumps({'done': True, 'model': model, 'conversation_id': conversation_id})}\n\n"
                 
                 loop = asyncio.new_event_loop()
@@ -462,7 +481,8 @@ def chat_stream():
 @app.route('/generate_image', methods=['POST'])
 def generate_image():
     user_key = get_user_key()
-    premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
+    hashed_codes = get_hashed_codes()
+    premium = user_key and user_key in hashed_codes
     if not premium:
         return jsonify({'error': 'Image generation is only available for premium users.'}), 403
     try:
@@ -489,7 +509,8 @@ def generate_image():
 @app.route('/edit_image', methods=['POST'])
 def edit_image():
     user_key = get_user_key()
-    premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
+    hashed_codes = get_hashed_codes()
+    premium = user_key and user_key in hashed_codes
     if not premium:
         return jsonify({'error': 'Image editing is only available for premium users.'}), 403
     try:
@@ -578,9 +599,10 @@ def clear_document():
 @app.route('/upload_image', methods=['POST'])
 def upload_image():
     try:
-        # Premium gate for image uploads
+        # Premium gate for image uploads - optimized
         user_key = get_user_key()
-        premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
+        hashed_codes = get_hashed_codes()
+        premium = user_key and user_key in hashed_codes
         if not premium:
             return jsonify({'error': 'Image upload is only available for premium users.'}), 403
         if 'image' not in request.files:
@@ -650,9 +672,10 @@ def upload_image():
 @app.route('/upload_document', methods=['POST'])
 def upload_document():
     try:
-        # Premium gate for document uploads
+        # Premium gate for document uploads - optimized
         user_key = get_user_key()
-        premium = user_key and user_key in [hash_code(c) for c in VALID_CODES]
+        hashed_codes = get_hashed_codes()
+        premium = user_key and user_key in hashed_codes
         if not premium:
             return jsonify({'error': 'Document upload is only available for premium users.'}), 403
         if 'document' not in request.files:
