@@ -32,6 +32,17 @@ async def encode_image_to_base64(image_data: bytes) -> str:
 def remove_think_block(text):
     return re.sub(r'<think>[\s\S]*?</think>', '', text, flags=re.IGNORECASE)
 
+def extract_think_blocks(text):
+    """Extract all thinking blocks from text"""
+    matches = re.findall(r'<think>([\s\S]*?)</think>', text, flags=re.IGNORECASE)
+    return matches
+
+def is_inside_think_block(text):
+    """Check if we're currently inside a thinking block"""
+    open_tags = len(re.findall(r'<think>', text, flags=re.IGNORECASE))
+    close_tags = len(re.findall(r'</think>', text, flags=re.IGNORECASE))
+    return open_tags > close_tags
+
 async def ask_ai_stream(question: str, model: str = MODEL_NAME, context=None, image_data: bytes = None):
     messages = context[:] if context else []
     messages.append({"role": "user", "content": question})
@@ -93,6 +104,10 @@ async def ask_ai_stream(question: str, model: str = MODEL_NAME, context=None, im
             ) as response:
                 if response.status == 200:
                     full_response = ""
+                    current_buffer = ""
+                    in_think_block = False
+                    think_buffer = ""
+                    
                     async for line in response.content:
                         line = line.decode('utf-8').strip()
                         if line.startswith('data: '):
@@ -107,9 +122,56 @@ async def ask_ai_stream(question: str, model: str = MODEL_NAME, context=None, im
                                         content = choice['delta']['content']
                                         if content:
                                             full_response += content
-                                            yield content
+                                            current_buffer += content
+                                            
+                                            # Check for think block markers
+                                            if '<think>' in current_buffer.lower():
+                                                in_think_block = True
+                                                # Send any content before <think>
+                                                before_think = re.split(r'<think>', current_buffer, flags=re.IGNORECASE)[0]
+                                                if before_think:
+                                                    yield json.dumps({'type': 'content', 'text': before_think})
+                                                current_buffer = re.sub(r'^.*?<think>', '', current_buffer, flags=re.IGNORECASE | re.DOTALL)
+                                                think_buffer = ""
+                                            
+                                            if in_think_block:
+                                                if '</think>' in current_buffer.lower():
+                                                    # Extract thinking content
+                                                    parts = re.split(r'</think>', current_buffer, maxsplit=1, flags=re.IGNORECASE)
+                                                    think_content = parts[0]
+                                                    think_buffer += think_content
+                                                    
+                                                    # Send complete thinking block
+                                                    if think_buffer.strip():
+                                                        yield json.dumps({'type': 'thinking', 'text': think_buffer.strip()})
+                                                    
+                                                    in_think_block = False
+                                                    think_buffer = ""
+                                                    current_buffer = parts[1] if len(parts) > 1 else ""
+                                                    
+                                                    # Continue with remaining content
+                                                    if current_buffer:
+                                                        yield json.dumps({'type': 'content', 'text': current_buffer})
+                                                        current_buffer = ""
+                                                else:
+                                                    # Still inside think block
+                                                    think_buffer += current_buffer
+                                                    yield json.dumps({'type': 'thinking', 'text': current_buffer})
+                                                    current_buffer = ""
+                                            else:
+                                                # Normal content
+                                                if current_buffer:
+                                                    yield json.dumps({'type': 'content', 'text': current_buffer})
+                                                    current_buffer = ""
                             except json.JSONDecodeError:
                                 continue
+                    
+                    # Flush any remaining content
+                    if current_buffer:
+                        if in_think_block:
+                            yield json.dumps({'type': 'thinking', 'text': current_buffer})
+                        else:
+                            yield json.dumps({'type': 'content', 'text': current_buffer})
                 else:
                     error_text = await response.text()
                     logger.error(f"Error from API: {response.status} - {error_text}")

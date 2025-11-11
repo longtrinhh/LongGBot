@@ -7,6 +7,8 @@ from google.api_core import retry, exceptions
 from datetime import datetime
 import time
 import grpc
+import re
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -15,131 +17,70 @@ MODEL_FILE = "user_models.json"
 
 user_contexts = {}
 user_models = {}
-user_documents = {}  # Store uploaded document content per user
+user_documents = {}
 
-# Track connection health
 _firestore_client = None
-_client_created_at = None
-_client_last_error = None
-_max_client_age = 3600 * 6  # Recreate client after 6 hours
 
-# Configure gRPC keep-alive options to prevent stale connections
-grpc_options = [
-    # Send keep-alive pings every 60 seconds
-    ('grpc.keepalive_time_ms', 60000),
-    # Wait 20 seconds for keep-alive ping ack before considering connection dead
-    ('grpc.keepalive_timeout_ms', 20000),
-    # Allow keep-alive pings even when there are no calls
-    ('grpc.keepalive_permit_without_calls', True),
-    # Max time to wait for connection
-    ('grpc.max_connection_idle_ms', 300000),  # 5 minutes
-    # Max time a connection can exist
-    ('grpc.max_connection_age_ms', 3600000),  # 1 hour
-    # Grace period after max_connection_age
-    ('grpc.max_connection_age_grace_ms', 300000),  # 5 minutes
-    # HTTP2 settings
-    ('grpc.http2.max_pings_without_data', 0),
-    ('grpc.http2.min_time_between_pings_ms', 10000),
-    ('grpc.http2.min_ping_interval_without_data_ms', 30000),
-]
-
-def create_firestore_client():
-    """Create a new Firestore client with keep-alive settings"""
-    global _firestore_client, _client_created_at, _client_last_error
-    
-    try:
-        logger.info("Creating new Firestore client with keep-alive settings...")
-        
-        # Try to create client with gRPC options via client_options
-        from google.api_core.client_options import ClientOptions
-        
-        # Create client with options that help prevent stale connections
-        client_options_dict = {
-            'api_endpoint': 'firestore.googleapis.com:443'
-        }
-        
-        # Create Firestore client with custom options
-        # The gRPC options will be automatically applied by the client library
-        _firestore_client = firestore.Client(
-            client_options=ClientOptions(**client_options_dict)
-        )
-        
-        # Monkey-patch the channel options after creation to add keep-alive
-        try:
-            # Access the internal transport and add keep-alive options
-            if hasattr(_firestore_client, '_firestore_api') and hasattr(_firestore_client._firestore_api, '_transport'):
-                transport = _firestore_client._firestore_api._transport
-                if hasattr(transport, '_channel'):
-                    # Channel already created, can't modify options
-                    logger.debug("Channel already created, keep-alive options will apply on next reconnect")
-        except Exception as patch_error:
-            logger.debug(f"Could not patch channel options: {patch_error}")
-        
-        _client_created_at = time.time()
-        _client_last_error = None
-        
-        logger.info("✓ Firestore client created successfully")
-        return _firestore_client
-        
-    except Exception as e:
-        logger.error(f"✗ Failed to create Firestore client: {e}")
-        _client_last_error = time.time()
-        _firestore_client = None
-        return None
+try:
+    firestore_client = firestore.Client()
+    logger.info("✓ Firestore client created successfully")
+except Exception as e:
+    logger.error(f"✗ Failed to create Firestore client: {e}")
+    firestore_client = None
 
 def get_firestore_client():
-    """Get Firestore client with automatic reconnection for stale connections"""
-    global _firestore_client, _client_created_at, _client_last_error
-    
-    current_time = time.time()
-    
-    # Check if we need to recreate the client
-    recreate = False
-    
-    if _firestore_client is None:
-        recreate = True
-        reason = "no client exists"
-    elif _client_created_at and (current_time - _client_created_at) > _max_client_age:
-        recreate = True
-        reason = f"client age exceeded {_max_client_age}s"
-    elif _client_last_error and (current_time - _client_last_error) < 60:
-        # Don't recreate if we just had an error less than 60 seconds ago
-        logger.debug("Recent error, not recreating client yet")
-        return _firestore_client
-    
-    if recreate:
-        logger.info(f"Recreating Firestore client: {reason}")
-        return create_firestore_client()
-    
-    return _firestore_client
-
-# Initialize the client
-firestore_client = get_firestore_client()
+    global firestore_client
+    if firestore_client is None:
+        try:
+            firestore_client = firestore.Client()
+            logger.info("✓ Firestore client recreated successfully")
+        except Exception as e:
+            logger.error(f"✗ Failed to recreate Firestore client: {e}")
+    return firestore_client
 
 FIRESTORE_COLLECTION = "user_conversations"
 
-# Custom retry predicate for transient errors
-def should_retry(exc):
-    """Determine if an exception should trigger a retry"""
-    return isinstance(exc, (
-        exceptions.ServiceUnavailable,
-        exceptions.InternalServerError,
-        exceptions.TooManyRequests,
-        exceptions.DeadlineExceeded,
-        exceptions.ResourceExhausted,
-        exceptions.Aborted,
-        exceptions.Unavailable,
-    ))
-
-# Create a custom retry decorator with shorter timeouts
 custom_retry = retry.Retry(
-    predicate=should_retry,
-    initial=0.5,  # Start with 0.5 second delay
-    maximum=10.0,  # Max 10 seconds between retries
-    multiplier=2.0,  # Double the delay each time
-    deadline=30.0,  # Total timeout of 30 seconds instead of 300
-    timeout=30.0
+    initial=0.3,
+    maximum=5.0,
+    multiplier=1.5,
+    deadline=15.0,
+    timeout=15.0
 )
+
+def sanitize_input(text: str, max_length: int = 10000) -> str:
+    """Sanitize user input to prevent injection attacks"""
+    if not text or not isinstance(text, str):
+        return ""
+    text = text[:max_length]
+    text = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', text)
+    return text.strip()
+
+def validate_conversation_id(conversation_id: str) -> bool:
+    """Validate conversation ID format to prevent injection"""
+    if not conversation_id or not isinstance(conversation_id, str):
+        return False
+    if len(conversation_id) > 100:
+        return False
+    return bool(re.match(r'^[a-zA-Z0-9_-]+$', conversation_id))
+
+def verify_conversation_ownership(user_id: str, conversation_id: str) -> bool:
+    """Verify that the user owns the conversation"""
+    client = get_firestore_client()
+    if not client:
+        return False
+    
+    try:
+        doc_ref = client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
+        doc = doc_ref.get(timeout=3.0)
+        if not doc.exists:
+            return False
+        data = doc.to_dict()
+        return data.get('user_id') == user_id
+    except Exception as e:
+        logger.error(f"Error verifying conversation ownership: {e}")
+        return False
+
 
 def load_data():
     global user_contexts, user_models
@@ -224,144 +165,59 @@ def remove_think_block(text):
 def get_full_conversation(user_key: str) -> List[Dict]:
     return user_contexts.get(str(user_key), [])
 
-# Simple cache for conversations (invalidate when new conversation created/deleted)
-_conversation_cache = {}
-_cache_timeout = 300  # 5 minutes
-_individual_conv_cache = {}  # Cache for individual conversation messages
-_individual_cache_timeout = 60  # 1 minute for individual conversations
-
 def get_firestore_conversations_for_user(user_id):
-    """Get conversations for a user with error handling and caching"""
-    global _client_last_error
-    cache_key = f"conversations_{user_id}"
-    current_time = time.time()
-    
-    # Check cache first
-    if cache_key in _conversation_cache:
-        cached_data, timestamp = _conversation_cache[cache_key]
-        if current_time - timestamp < _cache_timeout:
-            logger.debug(f"Returning cached conversations for user {user_id}")
-            return cached_data
-    
-    # Get fresh client (handles stale connections)
     client = get_firestore_client()
     if not client:
-        logger.error("Firestore client not available, returning empty conversations")
+        logger.error("Firestore client not available")
         return []
     
-    # Fetch from Firestore with retry and timeout
     try:
         logger.info(f"Fetching conversations from Firestore for user {user_id}")
-        # Use shorter timeout for query
         query = client.collection(FIRESTORE_COLLECTION).where("user_id", "==", user_id)
-        
-        # Stream with timeout - collect quickly or fail fast
-        docs = []
-        try:
-            for doc in query.stream(timeout=10.0):  # 10 second timeout for streaming
-                docs.append(doc)
-        except Exception as stream_error:
-            logger.error(f"Error streaming Firestore documents: {stream_error}")
-            # Mark client for recreation on next call
-            _client_last_error = time.time()
-            # Return cached data if available, even if expired
-            if cache_key in _conversation_cache:
-                logger.warning(f"Returning stale cache for user {user_id} due to Firestore error")
-                return _conversation_cache[cache_key][0]
-            return []
-        
+        docs = query.stream(timeout=5.0)
         conversations = [doc.to_dict() for doc in docs]
         logger.info(f"Successfully fetched {len(conversations)} conversations for user {user_id}")
-        
-        # Cache the result
-        _conversation_cache[cache_key] = (conversations, current_time)
-        
         return conversations
-        
-    except exceptions.RetryError as e:
-        logger.error(f"Firestore RetryError after timeout: {e}")
-        # Mark client for recreation on next call
-        _client_last_error = time.time()
-        # Return cached data if available, even if expired
-        if cache_key in _conversation_cache:
-            logger.warning(f"Returning stale cache for user {user_id} due to timeout")
-            return _conversation_cache[cache_key][0]
-        return []
     except Exception as e:
-        logger.error(f"Unexpected error fetching Firestore conversations: {e}", exc_info=True)
-        # Mark client for recreation on next call
-        _client_last_error = time.time()
-        # Return cached data if available, even if expired
-        if cache_key in _conversation_cache:
-            logger.warning(f"Returning stale cache for user {user_id} due to error")
-            return _conversation_cache[cache_key][0]
+        logger.error(f"Error fetching Firestore conversations: {e}")
         return []
-
-def _invalidate_user_cache(user_id):
-    """Invalidate cached conversations for a user"""
-    cache_key = f"conversations_{user_id}"
-    if cache_key in _conversation_cache:
-        del _conversation_cache[cache_key]
-    
-    # Also invalidate individual conversation caches for this user
-    keys_to_delete = [key for key in _individual_conv_cache.keys() if key.startswith(f"{user_id}__")]
-    for key in keys_to_delete:
-        del _individual_conv_cache[key]
 
 def get_firestore_conversation(user_id, conversation_id):
-    """Get a specific conversation with error handling and caching"""
-    global _client_last_error
+    if not validate_conversation_id(conversation_id):
+        logger.warning(f"Invalid conversation_id format: {conversation_id}")
+        return []
     
-    cache_key = f"{user_id}__{conversation_id}"
-    current_time = time.time()
-    
-    # Check cache first
-    if cache_key in _individual_conv_cache:
-        cached_data, timestamp = _individual_conv_cache[cache_key]
-        if current_time - timestamp < _individual_cache_timeout:
-            logger.debug(f"Returning cached conversation {conversation_id}")
-            return cached_data
+    if not verify_conversation_ownership(user_id, conversation_id):
+        logger.warning(f"User {user_id} attempted to access conversation {conversation_id} without ownership")
+        return []
     
     client = get_firestore_client()
     if not client:
         logger.error("Firestore client not available")
-        # Return cached data if available, even if expired
-        if cache_key in _individual_conv_cache:
-            return _individual_conv_cache[cache_key][0]
         return []
     
     try:
-        doc_ref = client.collection(FIRESTORE_COLLECTION).document(cache_key)
-        doc = doc_ref.get(timeout=10.0)  # 10 second timeout
+        doc_ref = client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
+        doc = doc_ref.get(timeout=5.0)
         if doc.exists:
-            messages = doc.to_dict().get("messages", [])
-            # Cache the result
-            _individual_conv_cache[cache_key] = (messages, current_time)
-            return messages
-        return []
-    except exceptions.RetryError as e:
-        logger.error(f"Firestore RetryError getting conversation {conversation_id}: {e}")
-        _client_last_error = time.time()
-        # Return cached data if available
-        if cache_key in _individual_conv_cache:
-            return _individual_conv_cache[cache_key][0]
+            return doc.to_dict().get("messages", [])
         return []
     except Exception as e:
-        logger.error(f"Error getting conversation {conversation_id}: {e}", exc_info=True)
-        _client_last_error = time.time()
-        # Return cached data if available
-        if cache_key in _individual_conv_cache:
-            return _individual_conv_cache[cache_key][0]
+        logger.error(f"Error getting conversation {conversation_id}: {e}")
         return []
 
 def add_firestore_message(user_id, conversation_id, message):
-    """Add a message to a conversation with error handling"""
-    global _client_last_error
+    if not validate_conversation_id(conversation_id):
+        logger.warning(f"Invalid conversation_id format: {conversation_id}")
+        return False
     
-    # Invalidate cache when adding message
-    cache_key = f"{user_id}__{conversation_id}"
-    if cache_key in _individual_conv_cache:
-        del _individual_conv_cache[cache_key]
+    if not verify_conversation_ownership(user_id, conversation_id):
+        logger.warning(f"User {user_id} attempted to modify conversation {conversation_id} without ownership")
+        return False
+    
+    content = message.get('content', '')
+    if isinstance(content, str):
+        message['content'] = sanitize_input(content)
     
     client = get_firestore_client()
     if not client:
@@ -369,74 +225,56 @@ def add_firestore_message(user_id, conversation_id, message):
         return False
     
     try:
-        doc_ref = client.collection(FIRESTORE_COLLECTION).document(cache_key)
+        doc_ref = client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
+        doc = doc_ref.get(timeout=5.0)
         
-        # Use atomic update to append message - more efficient than read-modify-write
-        try:
-            from google.cloud.firestore import ArrayUnion
-            doc_ref.update({
-                "messages": ArrayUnion([message]),
-                "last_updated": datetime.utcnow().isoformat() + 'Z'
-            }, timeout=10.0)
-            logger.debug(f"Message added to conversation {conversation_id}")
-            return True
-        except Exception as update_error:
-            # Fallback to read-modify-write if document doesn't exist
-            logger.debug(f"Update failed, falling back to set: {update_error}")
-            try:
-                doc = doc_ref.get(timeout=10.0)
-                if doc.exists:
-                    messages = doc.to_dict().get("messages", [])
-                else:
-                    messages = []
-                messages.append(message)
-                doc_ref.set({
-                    "user_id": user_id,
-                    "conversation_id": conversation_id,
-                    "messages": messages,
-                    "last_updated": datetime.utcnow().isoformat() + 'Z'
-                }, timeout=10.0)
-                logger.debug(f"Message set in conversation {conversation_id}")
-                return True
-            except Exception as set_error:
-                logger.error(f"Failed to set message in conversation {conversation_id}: {set_error}")
-                _client_last_error = time.time()
-                return False
-    except exceptions.RetryError as e:
-        logger.error(f"Firestore RetryError adding message to {conversation_id}: {e}")
-        _client_last_error = time.time()
-        return False
+        if doc.exists:
+            messages = doc.to_dict().get("messages", [])
+            existing_title = doc.to_dict().get("title", "New Conversation")
+        else:
+            messages = []
+            existing_title = "New Conversation"
+        
+        if len(messages) >= 1000:
+            logger.warning(f"Conversation {conversation_id} has too many messages")
+            return False
+        
+        messages.append(message)
+        
+        doc_ref.set({
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "messages": messages,
+            "title": existing_title,
+            "last_updated": datetime.utcnow().isoformat() + 'Z'
+        }, timeout=5.0)
+        logger.debug(f"Message added to conversation {conversation_id}")
+        return True
     except Exception as e:
-        logger.error(f"Error adding message to conversation {conversation_id}: {e}", exc_info=True)
-        _client_last_error = time.time()
+        logger.error(f"Error adding message to conversation {conversation_id}: {e}")
         return False
 
 def create_firestore_conversation(user_id, title=None):
-    """Create a new conversation with error handling"""
-    import uuid
-    global _client_last_error
+    if title:
+        title = sanitize_input(title, max_length=100)
+    
+    conv_id = secrets.token_urlsafe(32)
     
     client = get_firestore_client()
     if not client:
         logger.error("Firestore client not available")
-        # Generate a temporary conversation ID even if Firestore is down
-        return str(uuid.uuid4())
-    
-    # Invalidate cache when creating new conversation
-    _invalidate_user_cache(user_id)
+        return conv_id
     
     try:
         is_premium = isinstance(user_id, str) and len(user_id) == 64
         max_convs = 10 if is_premium else 2
         
-        # Get existing conversations with timeout
         try:
             docs = []
-            for doc in client.collection(FIRESTORE_COLLECTION).where("user_id", "==", user_id).stream(timeout=10.0):
+            for doc in client.collection(FIRESTORE_COLLECTION).where("user_id", "==", user_id).stream(timeout=5.0):
                 docs.append(doc)
         except Exception as stream_error:
             logger.error(f"Error streaming documents for conversation limit check: {stream_error}")
-            _client_last_error = time.time()
             docs = []
         
         if len(docs) >= max_convs:
@@ -451,7 +289,6 @@ def create_firestore_conversation(user_id, title=None):
             except Exception as delete_error:
                 logger.error(f"Error deleting oldest conversation: {delete_error}")
         
-        conv_id = str(uuid.uuid4())
         doc_ref = client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conv_id}")
         doc_ref.set({
             "user_id": user_id,
@@ -463,47 +300,42 @@ def create_firestore_conversation(user_id, title=None):
         logger.info(f"Created new conversation {conv_id} for user {user_id}")
         return conv_id
         
-    except exceptions.RetryError as e:
-        logger.error(f"Firestore RetryError creating conversation: {e}")
-        _client_last_error = time.time()
-        # Return a temporary conversation ID
-        return str(uuid.uuid4())
     except Exception as e:
-        logger.error(f"Error creating conversation: {e}", exc_info=True)
-        _client_last_error = time.time()
-        # Return a temporary conversation ID
-        return str(uuid.uuid4())
+        logger.error(f"Error creating conversation: {e}")
+        return conv_id
 
 def delete_firestore_conversation(user_id, conversation_id):
-    """Delete a conversation with error handling"""
-    global _client_last_error
+    if not validate_conversation_id(conversation_id):
+        logger.warning(f"Invalid conversation_id format: {conversation_id}")
+        return False
+    
+    if not verify_conversation_ownership(user_id, conversation_id):
+        logger.warning(f"User {user_id} attempted to delete conversation {conversation_id} without ownership")
+        return False
     
     client = get_firestore_client()
     if not client:
         logger.error("Firestore client not available")
         return False
     
-    # Invalidate cache when deleting conversation
-    _invalidate_user_cache(user_id)
-    
     try:
         doc_ref = client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
-        doc_ref.delete(timeout=10.0)
+        doc_ref.delete(timeout=5.0)
         logger.info(f"Deleted conversation {conversation_id} for user {user_id}")
         return True
-    except exceptions.RetryError as e:
-        logger.error(f"Firestore RetryError deleting conversation {conversation_id}: {e}")
-        _client_last_error = time.time()
-        return False
     except Exception as e:
-        logger.error(f"Error deleting conversation {conversation_id}: {e}", exc_info=True)
-        _client_last_error = time.time()
+        logger.error(f"Error deleting conversation {conversation_id}: {e}")
         return False
 
 def set_conversation_title_if_default(user_id, conversation_id, new_title):
-    """Set conversation title if it is missing or the default placeholder."""
-    global _client_last_error
+    if not validate_conversation_id(conversation_id):
+        return
     
+    if not verify_conversation_ownership(user_id, conversation_id):
+        logger.warning(f"User {user_id} attempted to update title for conversation {conversation_id} without ownership")
+        return
+    
+    new_title = sanitize_input(new_title, max_length=100)
     client = get_firestore_client()
     if not client:
         logger.debug("Firestore client not available, skipping title update")
@@ -516,76 +348,54 @@ def set_conversation_title_if_default(user_id, conversation_id, new_title):
             return
         data = doc.to_dict() or {}
         current = data.get("title")
-        # Only set if missing or equals default placeholder
+        
         if not current or current.strip().lower() == "new conversation":
-            # Trim and clean title
             safe = (new_title or "").strip()
             if not safe:
                 return
             if len(safe) > 80:
                 safe = safe[:80] + "…"
-            doc_ref.update({"title": safe}, timeout=10.0)
-            # Invalidate cache for this user so listing picks up new title
-            _invalidate_user_cache(user_id)
+            doc_ref.update({"title": safe}, timeout=5.0)
             logger.debug(f"Updated title for conversation {conversation_id}")
-    except exceptions.RetryError as e:
-        logger.error(f"Firestore RetryError setting conversation title: {e}")
-        _client_last_error = time.time()
     except Exception as e:
         logger.error(f"Error setting conversation title: {e}")
-        _client_last_error = time.time()
 
 def generate_title_from_text(text: str) -> str:
-    """Generate a concise conversation title from arbitrary text.
-
-    Heuristics:
-    - Use the first sentence/line
-    - Collapse whitespace and strip markdown-ish fences
-    - Truncate to ~60 chars
-    """
     if not text:
         return "New Conversation"
     s = str(text)
-    # Remove backticks and excessive spaces
     s = s.replace('`', ' ').replace('\r', ' ').strip()
-    # Take first line before hard newline
     first_line = s.split('\n', 1)[0]
-    # Split by sentence terminators
+    
     import re
     sentence = re.split(r"(?<=[.!?])\s", first_line)[0] if first_line else s
     candidate = sentence.strip() or s.strip()
-    # Collapse spaces
     candidate = re.sub(r"\s+", " ", candidate)
-    # Limit length
+    
     max_len = 60
     if len(candidate) > max_len:
         candidate = candidate[:max_len].rstrip() + "…"
     return candidate or "New Conversation"
 
 def set_user_document(user_key: str, content: str, filename: str, file_type: str):
-    """Store document content for a user"""
     user_key_str = str(user_key)
     user_documents[user_key_str] = {
         'content': content,
         'filename': filename,
         'file_type': file_type,
-        # Track the conversation id where this document was injected as a system message
         'injected_conversation_id': None
     }
 
 def get_user_document(user_key: str) -> Optional[Dict]:
-    """Get stored document content for a user"""
     user_key_str = str(user_key)
     return user_documents.get(user_key_str)
 
 def clear_user_document(user_key: str):
-    """Clear stored document content for a user"""
     user_key_str = str(user_key)
     if user_key_str in user_documents:
         del user_documents[user_key_str]
 
 def has_user_document(user_key: str) -> bool:
-    """Check if user has uploaded document"""
     user_key_str = str(user_key)
     return user_key_str in user_documents
 

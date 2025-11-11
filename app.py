@@ -11,7 +11,7 @@ from shared_context import (
     get_user_model, set_user_model, clear_user_context,
     get_firestore_conversations_for_user, get_firestore_conversation, add_firestore_message, create_firestore_conversation, delete_firestore_conversation,
     set_user_document, get_user_document, clear_user_document, has_user_document,
-    set_conversation_title_if_default, generate_title_from_text
+    set_conversation_title_if_default, generate_title_from_text, sanitize_input
 )
 from config import CHAT_MODELS, IMAGE_GEN_MODELS, MODEL_NAME, FLASK_SECRET_KEY
 import uuid
@@ -19,21 +19,44 @@ import os
 import hashlib
 from PIL import Image
 from document_processor import DocumentProcessor
+from collections import defaultdict
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
 
-# Enable gzip compression for all responses (industry standard for chat apps)
 compress = Compress()
 compress.init_app(app)
 app.config['COMPRESS_MIMETYPES'] = ['text/html', 'text/css', 'text/javascript', 'application/json', 'application/javascript']
-app.config['COMPRESS_LEVEL'] = 6  # Balanced compression level
-app.config['COMPRESS_MIN_SIZE'] = 500  # Only compress responses larger than 500 bytes
+app.config['COMPRESS_LEVEL'] = 6
+app.config['COMPRESS_MIN_SIZE'] = 500
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 image_client = AIImageClient()
+
+rate_limit_storage = defaultdict(list)
+RATE_LIMIT_REQUESTS = 30
+RATE_LIMIT_WINDOW = 60
+
+def check_rate_limit(user_key):
+    """Simple rate limiting: max requests per time window"""
+    if not user_key:
+        return False
+    
+    now = datetime.utcnow()
+    window_start = now - timedelta(seconds=RATE_LIMIT_WINDOW)
+    
+    requests = rate_limit_storage[user_key]
+    requests = [req_time for req_time in requests if req_time > window_start]
+    rate_limit_storage[user_key] = requests
+    
+    if len(requests) >= RATE_LIMIT_REQUESTS:
+        return False
+    
+    rate_limit_storage[user_key].append(now)
+    return True
 
 def load_valid_codes():
     codes_path = os.path.join(os.path.dirname(__file__), 'codes.txt')
@@ -249,8 +272,14 @@ def delete_conversation(conversation_id):
     user_key = get_user_key()
     if not user_key:
         return jsonify({'error': 'User not identified.'}), 400
+    
+    if not check_rate_limit(user_key):
+        return jsonify({'error': 'Rate limit exceeded'}), 429
+    
     try:
-        delete_firestore_conversation(user_key, conversation_id)
+        success = delete_firestore_conversation(user_key, conversation_id)
+        if not success:
+            return jsonify({'error': 'Failed to delete conversation or unauthorized'}), 403
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -263,6 +292,15 @@ def chat():
         image_data = data.get('image', '')
         conversation_id = data.get('conversation_id')
         user_key = get_user_key()
+        
+        if not user_key:
+            return jsonify({'error': 'User not identified'}), 401
+        
+        if not check_rate_limit(user_key):
+            return jsonify({'error': 'Rate limit exceeded. Please slow down.'}), 429
+        
+        message = sanitize_input(message, max_length=50000)
+        
         premium = user_key and user_key in get_hashed_codes()
         
         if not message:
@@ -363,7 +401,16 @@ def chat_stream():
         image_data = data.get('image', '')
         conversation_id = data.get('conversation_id')
         user_key = get_user_key()
-        hashed_codes = get_hashed_codes()  # Cache this lookup
+        
+        if not user_key:
+            return jsonify({'error': 'User not identified'}), 401
+        
+        if not check_rate_limit(user_key):
+            return jsonify({'error': 'Rate limit exceeded. Please slow down.'}), 429
+        
+        message = sanitize_input(message, max_length=50000)
+        
+        hashed_codes = get_hashed_codes()
         premium = user_key and user_key in hashed_codes
         
         if not message:
@@ -429,24 +476,37 @@ def chat_stream():
 
         def generate():
             full_response = ""
+            full_thinking = ""
             try:
                 async def stream_response():
-                    nonlocal full_response
+                    nonlocal full_response, full_thinking
                     async for chunk in ask_ai_stream(final_message, model, context, image_bytes):
                         if chunk:
-                            full_response += chunk
-                            yield f"data: {json.dumps({'chunk': chunk, 'model': model, 'conversation_id': conversation_id})}\n\n"
-                        else:
-                            yield f"data: {json.dumps({'chunk': '', 'model': model, 'conversation_id': conversation_id})}\n\n"
+                            try:
+                                chunk_data = json.loads(chunk)
+                                chunk_type = chunk_data.get('type', 'content')
+                                text = chunk_data.get('text', '')
+                                
+                                if chunk_type == 'thinking':
+                                    full_thinking += text
+                                    # Send thinking separately with special marker
+                                    yield f"data: {json.dumps({'type': 'thinking', 'chunk': text, 'model': model, 'conversation_id': conversation_id})}\n\n"
+                                else:
+                                    # Regular content
+                                    full_response += text
+                                    yield f"data: {json.dumps({'type': 'content', 'chunk': text, 'model': model, 'conversation_id': conversation_id})}\n\n"
+                            except json.JSONDecodeError:
+                                # Fallback for non-JSON chunks (backward compatibility)
+                                full_response += chunk
+                                yield f"data: {json.dumps({'type': 'content', 'chunk': chunk, 'model': model, 'conversation_id': conversation_id})}\n\n"
                     
-                    # Batch Firestore writes for better performance
+                    # Save only the actual response without thinking blocks
                     add_firestore_message(user_key, conversation_id, {'role': 'user', 'content': message})
                     add_firestore_message(user_key, conversation_id, {'role': 'assistant', 'content': full_response})
                     
-                    # Set title after messages are added (deferred to end of stream)
                     set_conversation_title_if_default(user_key, conversation_id, message)
                     
-                    yield f"data: {json.dumps({'done': True, 'model': model, 'conversation_id': conversation_id})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'done': True, 'model': model, 'conversation_id': conversation_id})}\n\n"
                 
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)

@@ -426,8 +426,9 @@ function sendMessage() {
         // Create a new assistant message for streaming
         const assistantMessageDiv = addMessage('assistant', '', 'streaming');
         let fullResponse = '';
+        let fullThinking = '';
         let hasReceivedFirstChunk = false;
-        let thinkingShown = false;
+        let thinkingBlock = null;
         
         const reader = response.body.getReader();
         currentStreamReader = reader;
@@ -436,17 +437,13 @@ function sendMessage() {
         function readStream() {
             return reader.read().then(({ done, value }) => {
                 if (done) {
-                    // Remove loading state
                     sendBtn.classList.remove('loading');
                     sendBtn.disabled = false;
                     sendBtn.style.display = 'flex';
                     stopBtn.style.display = 'none';
                     isStreaming = false;
-        
-        // Reset scroll tracking flags
-        userScrolledUp = false;
+                    userScrolledUp = false;
                     currentStreamReader = null;
-                    // Add copy buttons to the just-finished message
                     setTimeout(enhanceAllAssistantMessagesWithCopy, 0);
                     return;
                 }
@@ -458,101 +455,104 @@ function sendMessage() {
                     if (line.startsWith('data: ')) {
                         try {
                             const data = JSON.parse(line.slice(6));
-                            // Capture conversation_id from the stream as soon as it arrives
+                            
                             if (data.conversation_id && !window.currentConversationId) {
                                 window.currentConversationId = data.conversation_id;
                             }
                             
                             if (data.error) {
-                                // Remove loading state
                                 sendBtn.classList.remove('loading');
                                 sendBtn.disabled = false;
                                 sendBtn.style.display = 'flex';
                                 stopBtn.style.display = 'none';
                                 isStreaming = false;
-        
-        // Reset scroll tracking flags
-        userScrolledUp = false;
+                                userScrolledUp = false;
                                 currentStreamReader = null;
                                 addMessage('assistant', `Error: ${data.error}`, 'error');
                                 return;
-                            } else if (data.chunk !== undefined) {
-                                const messageContent = assistantMessageDiv.querySelector('.message-content');
-                                
-                                // If chunk is empty string, show thinking indicator
-                                if (data.chunk === '') {
-                                    if (!thinkingShown && messageContent) {
-                                        messageContent.innerHTML = '<span class="stream-thinking-indicator" style="color: #888; font-style: italic;"><i class="fas fa-brain"></i> Thinking...</span>';
-                                        thinkingShown = true;
-                                    }
-                                    continue;
+                            } else if (data.type === 'thinking' && data.chunk !== undefined) {
+                                // Handle thinking content separately
+                                if (!thinkingBlock) {
+                                    // Create thinking section before main content
+                                    thinkingBlock = document.createElement('div');
+                                    thinkingBlock.className = 'thinking-block';
+                                    
+                                    const thinkingHeader = document.createElement('div');
+                                    thinkingHeader.className = 'thinking-header';
+                                    thinkingHeader.innerHTML = '<i class="fas fa-brain"></i> Thinking Process';
+                                    
+                                    const thinkingContent = document.createElement('div');
+                                    thinkingContent.className = 'thinking-content';
+                                    
+                                    thinkingBlock.appendChild(thinkingHeader);
+                                    thinkingBlock.appendChild(thinkingContent);
+                                    
+                                    assistantMessageDiv.querySelector('.message-content').prepend(thinkingBlock);
                                 }
                                 
-                                // Check for <think>...</think> block
-                                const thinkMatch = data.chunk.match(/^<think>([\s\S]*?)<\/think>$/i);
-                                if (thinkMatch) {
-                                    // Only show the indicator once
-                                    if (!thinkingShown && messageContent) {
-                                        messageContent.innerHTML = '<span class="stream-thinking-indicator" style="color: #888; font-style: italic;"><i class="fas fa-brain"></i> Thinking...</span>';
-                                        thinkingShown = true;
-                                    }
-                                    // Do not append to fullResponse
-                                    continue;
-                                } else {
-                                    // Remove the thinking indicator if present when we get actual content
-                                    if (thinkingShown && messageContent) {
-                                        messageContent.innerHTML = '';
-                                        thinkingShown = false;
-                                    }
+                                fullThinking += data.chunk;
+                                const thinkingContent = thinkingBlock.querySelector('.thinking-content');
+                                if (thinkingContent) {
+                                    thinkingContent.textContent = fullThinking;
+                                    smoothScrollToBottom(document.getElementById('chatMessages'), false);
                                 }
-                                
+                            } else if (data.type === 'content' && data.chunk !== undefined) {
+                                // Handle regular content
                                 if (!hasReceivedFirstChunk) {
                                     hasReceivedFirstChunk = true;
                                 }
+                                
                                 fullResponse += data.chunk;
-                                // Optimized markdown parsing: use requestAnimationFrame to batch updates
+                                const messageContent = assistantMessageDiv.querySelector('.message-content');
+                                
                                 if (messageContent) {
-                                    // Cancel any pending parse
                                     if (window._parseTimeout) {
                                         cancelAnimationFrame(window._parseTimeout);
                                     }
                                     
-                                    // Schedule markdown parse on next animation frame
-                                    // This batches rapid updates together
                                     window._parseTimeout = requestAnimationFrame(() => {
-                                        messageContent.innerHTML = marked.parse(fullResponse);
-                                        renderMath(messageContent);
+                                        // Create or update the response div after thinking
+                                        let responseDiv = messageContent.querySelector('.response-content');
+                                        if (!responseDiv) {
+                                            responseDiv = document.createElement('div');
+                                            responseDiv.className = 'response-content';
+                                            messageContent.appendChild(responseDiv);
+                                        }
+                                        responseDiv.innerHTML = marked.parse(fullResponse);
+                                        renderMath(responseDiv);
                                         smoothScrollToBottom(document.getElementById('chatMessages'), false);
                                     });
                                 }
-                            } else if (data.done) {
+                            } else if (data.type === 'done' && data.done) {
                                 if (data.conversation_id && !window.currentConversationId) {
                                     window.currentConversationId = data.conversation_id;
                                 }
                                 
-                                // Cancel any pending parse
                                 if (window._parseTimeout) {
                                     cancelAnimationFrame(window._parseTimeout);
                                     window._parseTimeout = null;
                                 }
                                 
-                                // Final markdown parse when streaming completes
+                                const messageContent = assistantMessageDiv.querySelector('.message-content');
                                 if (messageContent && fullResponse) {
-                                    messageContent.innerHTML = marked.parse(fullResponse);
-                                    renderMath(messageContent);
+                                    let responseDiv = messageContent.querySelector('.response-content');
+                                    if (!responseDiv) {
+                                        responseDiv = document.createElement('div');
+                                        responseDiv.className = 'response-content';
+                                        messageContent.appendChild(responseDiv);
+                                    }
+                                    responseDiv.innerHTML = marked.parse(fullResponse);
+                                    renderMath(responseDiv);
                                 }
                                 
-                                // Remove loading state
                                 sendBtn.classList.remove('loading');
                                 sendBtn.disabled = false;
                                 sendBtn.style.display = 'flex';
                                 stopBtn.style.display = 'none';
                                 isStreaming = false;
-        
-        // Reset scroll tracking flags
-        userScrolledUp = false;
+                                userScrolledUp = false;
                                 currentStreamReader = null;
-                                // Auto-clear document indicator after the first completed response
+                                
                                 const docInd2 = document.getElementById('documentIndicator');
                                 if (docInd2) {
                                     docInd2.remove();
