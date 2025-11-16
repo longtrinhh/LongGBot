@@ -38,6 +38,7 @@ function throttle(func, limit) {
 
 // Helper function to render LaTeX math in an element
 function renderMath(element) {
+    // Debug logging removed for production: renderMath called
     if (typeof renderMathInElement !== 'undefined') {
         try {
             renderMathInElement(element, {
@@ -50,8 +51,130 @@ function renderMath(element) {
                 throwOnError: false,
                 strict: false
             });
+            // Debug logging removed for production
         } catch (e) {
             console.warn('Math rendering error:', e);
+        }
+    } else {
+        console.warn('renderMathInElement not available yet, retrying in 100ms');
+        setTimeout(() => renderMath(element), 100);
+    }
+}
+
+// Normalize square-bracket math produced by some models like: [ E = mc^2 ]
+// Converts bracketed math to LaTeX display delimiters (\[ ... \]) when the
+// inner text looks like math (contains TeX commands or math operators).
+function convertSquareBracketMath(md) {
+    if (!md || typeof md !== 'string') return md;
+
+    return md.replace(/\[\s*([\s\S]*?)\s*\]/g, (match, inner) => {
+        // If it already appears to be proper TeX or markdown math, leave it
+        if (/^\$.*\$/.test(inner) || /^\\\[/.test(inner) || /^\\\(/.test(inner) || /\$\$/.test(inner)) {
+            return match;
+        }
+
+        // Heuristic: treat as math if it contains backslash (TeX), common TeX commands,
+        // math operators, or superscript/subscript markers.
+        const looksLikeMath = /\\|\\times|\\log|\\approx|\\frac|\\text|\^|_|=|\\left|\\right|\bpi\b/.test(inner) || /[0-9]+\s*[+\-\/*^=]/.test(inner);
+        if (looksLikeMath) {
+            return '\\[' + inner + '\\]';
+        }
+        return match;
+    });
+}
+
+// Safe copy helper: use clipboard API and fallback to execCommand
+function safeCopy(text) {
+    return new Promise((resolve, reject) => {
+        if (!text) {
+            reject(new Error('No text to copy'));
+            return;
+        }
+
+        // Prefer modern clipboard API
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            navigator.clipboard.writeText(text).then(resolve).catch(() => {
+                // Fallback to older method
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'absolute';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    const selected = document.getSelection().rangeCount > 0 ? document.getSelection().getRangeAt(0) : null;
+                    ta.select();
+                    if (document.execCommand('copy')) {
+                        document.body.removeChild(ta);
+                        if (selected) {
+                            document.getSelection().removeAllRanges();
+                            document.getSelection().addRange(selected);
+                        }
+                        resolve();
+                    } else {
+                        document.body.removeChild(ta);
+                        reject(new Error('execCommand copy failed'));
+                    }
+                } catch (e) {
+                    reject(e);
+                }
+            });
+            return;
+        }
+
+        // Fallback for very old browsers
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'absolute';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            const selected = document.getSelection().rangeCount > 0 ? document.getSelection().getRangeAt(0) : null;
+            ta.select();
+            if (document.execCommand('copy')) {
+                document.body.removeChild(ta);
+                if (selected) {
+                    document.getSelection().removeAllRanges();
+                    document.getSelection().addRange(selected);
+                }
+                resolve();
+            } else {
+                document.body.removeChild(ta);
+                reject(new Error('execCommand copy failed'));
+            }
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
+// Convert markdown to plain text by rendering to HTML and extracting textContent
+function markdownToPlain(md) {
+    try {
+        const html = marked.parse(md || '');
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        // Use textContent to preserve spacing and punctuation
+        return (tmp.textContent || tmp.innerText || '').trim();
+    } catch (e) {
+        // Fallback: naive regex stripping (best-effort)
+        try {
+            return (md || '')
+                .replace(/```[\s\S]*?```/g, m => m.replace(/```/g, ''))
+                .replace(/`([^`]+)`/g, '$1')
+                .replace(/\*\*([^*]+)\*\*/g, '$1')
+                .replace(/\*([^*]+)\*/g, '$1')
+                .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+                .replace(/\!\[(.*?)\]\(.*?\)/g, '')
+                .replace(/#+\s/g, '')
+                .replace(/\n{2,}/g, '\n')
+                .replace(/^- /gm, '')
+                .replace(/> /g, '')
+                .replace(/\|/g, '')
+                .trim();
+        } catch (e2) {
+            return (md || '').trim();
         }
     }
 }
@@ -518,7 +641,7 @@ function sendMessage() {
                                             responseDiv.className = 'response-content';
                                             messageContent.appendChild(responseDiv);
                                         }
-                                        responseDiv.innerHTML = marked.parse(fullResponse);
+                                        responseDiv.innerHTML = marked.parse(convertSquareBracketMath(fullResponse));
                                         renderMath(responseDiv);
                                         smoothScrollToBottom(document.getElementById('chatMessages'), false);
                                     });
@@ -541,8 +664,11 @@ function sendMessage() {
                                         responseDiv.className = 'response-content';
                                         messageContent.appendChild(responseDiv);
                                     }
-                                    responseDiv.innerHTML = marked.parse(fullResponse);
+                                    responseDiv.innerHTML = marked.parse(convertSquareBracketMath(fullResponse));
                                     renderMath(responseDiv);
+                                    
+                                    // Update the raw markdown data attribute for copy buttons
+                                    assistantMessageDiv.setAttribute('data-raw-markdown', fullResponse);
                                 }
                                 
                                 sendBtn.classList.remove('loading');
@@ -577,7 +703,9 @@ function sendMessage() {
                                         // Enhance only the last message
                                         if (!last.querySelector('.copy-btn-bar')) {
                                             // (reuse the logic from enhanceAllAssistantMessagesWithCopy for a single message)
-                                            let rawMarkdown = fullResponse; // Use fullResponse instead of textContent
+                                            // Get raw markdown from the parent message element's data attribute
+                                            const parentMessage = last.closest('.message');
+                                            let rawMarkdown = parentMessage ? parentMessage.getAttribute('data-raw-markdown') : fullResponse;
                                             const codeBlocks = last.querySelectorAll('pre > code');
                                             codeBlocks.forEach((codeBlock, idx) => {
                                                 const pre = codeBlock.parentElement;
@@ -588,9 +716,14 @@ function sendMessage() {
                                                 btn.innerHTML = '<i class="fas fa-copy"></i>';
                                                 btn.onclick = function(e) {
                                                     e.stopPropagation();
-                                                    navigator.clipboard.writeText(codeBlock.textContent);
-                                                    btn.classList.add('copied');
-                                                    setTimeout(() => { btn.classList.remove('copied'); }, 1200);
+                                                    safeCopy(codeBlock.textContent)
+                                                        .then(() => {
+                                                            btn.classList.add('copied');
+                                                            setTimeout(() => { btn.classList.remove('copied'); }, 1200);
+                                                        })
+                                                        .catch(() => {
+                                                            showAlert('Failed to copy code to clipboard. Please try manually.');
+                                                        });
                                                 };
                                                 pre.style.position = 'relative';
                                                 btn.style.position = 'absolute';
@@ -614,27 +747,26 @@ function sendMessage() {
                                             last.appendChild(copyBtns);
                                             markdownBtn.onclick = function(e) {
                                                 e.stopPropagation();
-                                                navigator.clipboard.writeText(rawMarkdown);
-                                                markdownBtn.classList.add('copied');
-                                                setTimeout(() => { markdownBtn.classList.remove('copied'); }, 1200);
+                                                safeCopy(rawMarkdown)
+                                                    .then(() => {
+                                                        markdownBtn.classList.add('copied');
+                                                        setTimeout(() => { markdownBtn.classList.remove('copied'); }, 1200);
+                                                    })
+                                                    .catch(() => {
+                                                        showAlert('Failed to copy markdown to clipboard. Please try manually.');
+                                                    });
                                             };
                                             plainBtn.onclick = function(e) {
                                                 e.stopPropagation();
-                                                let plain = rawMarkdown
-                                                    .replace(/```[\s\S]*?```/g, m => m.replace(/```/g, ''))
-                                                    .replace(/`([^`]+)`/g, '$1')
-                                                    .replace(/\*\*([^*]+)\*\*/g, '$1')
-                                                    .replace(/\*([^*]+)\*/g, '$1')
-                                                    .replace(/\[(.*?)\]\(.*?\)/g, '$1')
-                                                    .replace(/\!\[(.*?)\]\(.*?\)/g, '')
-                                                    .replace(/#+\s/g, '')
-                                                    .replace(/\n{2,}/g, '\n')
-                                                    .replace(/^- /gm, '')
-                                                    .replace(/> /g, '')
-                                                    .replace(/\|/g, '');
-                                                navigator.clipboard.writeText(plain);
-                                                plainBtn.classList.add('copied');
-                                                setTimeout(() => { plainBtn.classList.remove('copied'); }, 1200);
+                                                const plain = markdownToPlain(rawMarkdown);
+                                                safeCopy(plain)
+                                                    .then(() => {
+                                                        plainBtn.classList.add('copied');
+                                                        setTimeout(() => { plainBtn.classList.remove('copied'); }, 1200);
+                                                    })
+                                                    .catch(() => {
+                                                        showAlert('Failed to copy text to clipboard. Please try manually.');
+                                                    });
                                             };
                                         }
                                     }
@@ -873,8 +1005,10 @@ function addMessage(sender, content, type = 'normal', imageData = null) {
         // Remove <think> blocks if present
         let htmlContent = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
         rawMarkdown = htmlContent;
+        // Preprocess model text that uses square brackets for math, then render
+        rawMarkdown = convertSquareBracketMath(rawMarkdown);
         // Use marked library to render markdown
-        htmlContent = marked.parse(htmlContent);
+        htmlContent = marked.parse(rawMarkdown);
         
         // Render LaTeX math
         const tempMathDiv = document.createElement('div');
@@ -898,9 +1032,14 @@ function addMessage(sender, content, type = 'normal', imageData = null) {
             btn.innerHTML = '<i class="fas fa-copy"></i>';
             btn.onclick = function(e) {
                 e.stopPropagation();
-                navigator.clipboard.writeText(codeBlock.textContent);
-                btn.classList.add('copied');
-                setTimeout(() => { btn.classList.remove('copied'); }, 1200);
+                safeCopy(codeBlock.textContent)
+                    .then(() => {
+                        btn.classList.add('copied');
+                        setTimeout(() => { btn.classList.remove('copied'); }, 1200);
+                    })
+                    .catch(() => {
+                        showAlert('Failed to copy code to clipboard. Please try manually.');
+                    });
             };
             pre.style.position = 'relative';
             btn.style.position = 'absolute';
@@ -966,6 +1105,12 @@ function addMessage(sender, content, type = 'normal', imageData = null) {
     }
     
     messageDiv.innerHTML = messageContent;
+    // Store raw markdown on the element so enhanceAllAssistantMessagesWithCopy can use it
+    if (sender === 'assistant') {
+        try {
+            messageDiv.setAttribute('data-raw-markdown', rawMarkdown || '');
+        } catch (e) { /* ignore */ }
+    }
     messagesContainer.appendChild(messageDiv);
     
     // Add entrance animation
@@ -1003,30 +1148,33 @@ function addMessage(sender, content, type = 'normal', imageData = null) {
         if (markdownBtn) {
             markdownBtn.onclick = function(e) {
                 e.stopPropagation();
-                navigator.clipboard.writeText(rawMarkdown);
-                markdownBtn.classList.add('copied');
-                setTimeout(() => { markdownBtn.classList.remove('copied'); }, 1200);
+                // Get raw markdown from data attribute, fallback to local variable
+                const markdownToCopy = messageDiv.getAttribute('data-raw-markdown') || rawMarkdown;
+                safeCopy(markdownToCopy)
+                    .then(() => {
+                        markdownBtn.classList.add('copied');
+                        setTimeout(() => { markdownBtn.classList.remove('copied'); }, 1200);
+                    })
+                    .catch(() => {
+                        showAlert('Failed to copy markdown to clipboard. Please try manually.');
+                    });
             };
         }
         if (plainBtn) {
             plainBtn.onclick = function(e) {
                 e.stopPropagation();
-                // Remove markdown formatting for plain text
-                let plain = rawMarkdown
-                    .replace(/```[\s\S]*?```/g, m => m.replace(/```/g, ''))
-                    .replace(/`([^`]+)`/g, '$1')
-                    .replace(/\*\*([^*]+)\*\*/g, '$1')
-                    .replace(/\*([^*]+)\*/g, '$1')
-                    .replace(/\[(.*?)\]\(.*?\)/g, '$1')
-                    .replace(/\!\[(.*?)\]\(.*?\)/g, '')
-                    .replace(/#+\s/g, '')
-                    .replace(/\n{2,}/g, '\n')
-                    .replace(/^- /gm, '')
-                    .replace(/> /g, '')
-                    .replace(/\|/g, '');
-                navigator.clipboard.writeText(plain);
-                plainBtn.classList.add('copied');
-                setTimeout(() => { plainBtn.classList.remove('copied'); }, 1200);
+                // Get raw markdown from data attribute, fallback to local variable
+                const markdownToCopy = messageDiv.getAttribute('data-raw-markdown') || rawMarkdown;
+                // Convert markdown to plain text safely
+                const plain = markdownToPlain(markdownToCopy);
+                safeCopy(plain)
+                    .then(() => {
+                        plainBtn.classList.add('copied');
+                        setTimeout(() => { plainBtn.classList.remove('copied'); }, 1200);
+                    })
+                    .catch(() => {
+                        showAlert('Failed to copy text to clipboard. Please try manually.');
+                    });
             };
         }
     }
@@ -2229,7 +2377,13 @@ function enhanceAllAssistantMessagesWithCopy() {
         // Avoid double-enhancing
         if (msgContent.querySelector('.copy-btn-bar')) return;
         // Get the raw markdown from a data attribute if present, else try to reconstruct
-        let rawMarkdown = msgContent.textContent || '';
+        let rawMarkdown = '';
+        const parentMsg = msgContent.closest('.message');
+        if (parentMsg && parentMsg.getAttribute('data-raw-markdown')) {
+            rawMarkdown = parentMsg.getAttribute('data-raw-markdown');
+        } else {
+            rawMarkdown = msgContent.textContent || '';
+        }
         // Try to get the markdown from a hidden element if you store it, else fallback to textContent
         // Add copy code buttons to code blocks
         const codeBlocks = msgContent.querySelectorAll('pre > code');
@@ -2242,9 +2396,14 @@ function enhanceAllAssistantMessagesWithCopy() {
             btn.innerHTML = '<i class="fas fa-copy"></i>';
             btn.onclick = function(e) {
                 e.stopPropagation();
-                navigator.clipboard.writeText(codeBlock.textContent);
-                btn.classList.add('copied');
-                setTimeout(() => { btn.classList.remove('copied'); }, 1200);
+                safeCopy(codeBlock.textContent)
+                    .then(() => {
+                        btn.classList.add('copied');
+                        setTimeout(() => { btn.classList.remove('copied'); }, 1200);
+                    })
+                    .catch(() => {
+                        showAlert('Failed to copy code to clipboard. Please try manually.');
+                    });
             };
             pre.style.position = 'relative';
             btn.style.position = 'absolute';
@@ -2270,28 +2429,27 @@ function enhanceAllAssistantMessagesWithCopy() {
         // Markdown copy: fallback to textContent if no raw markdown
         markdownBtn.onclick = function(e) {
             e.stopPropagation();
-            navigator.clipboard.writeText(rawMarkdown);
-            markdownBtn.classList.add('copied');
-            setTimeout(() => { markdownBtn.classList.remove('copied'); }, 1200);
+            safeCopy(rawMarkdown)
+                .then(() => {
+                    markdownBtn.classList.add('copied');
+                    setTimeout(() => { markdownBtn.classList.remove('copied'); }, 1200);
+                })
+                .catch(() => {
+                    showAlert('Failed to copy markdown to clipboard. Please try manually.');
+                });
         };
         plainBtn.onclick = function(e) {
             e.stopPropagation();
-            // Remove markdown formatting for plain text
-            let plain = rawMarkdown
-                .replace(/```[\s\S]*?```/g, m => m.replace(/```/g, ''))
-                .replace(/`([^`]+)`/g, '$1')
-                .replace(/\*\*([^*]+)\*\*/g, '$1')
-                .replace(/\*([^*]+)\*/g, '$1')
-                .replace(/\[(.*?)\]\(.*?\)/g, '$1')
-                .replace(/\!\[(.*?)\]\(.*?\)/g, '')
-                .replace(/#+\s/g, '')
-                .replace(/\n{2,}/g, '\n')
-                .replace(/^- /gm, '')
-                .replace(/> /g, '')
-                .replace(/\|/g, '');
-            navigator.clipboard.writeText(plain);
-            plainBtn.classList.add('copied');
-            setTimeout(() => { plainBtn.classList.remove('copied'); }, 1200);
+            // Convert markdown to plain text safely
+            const plain = markdownToPlain(rawMarkdown);
+            safeCopy(plain)
+                .then(() => {
+                    plainBtn.classList.add('copied');
+                    setTimeout(() => { plainBtn.classList.remove('copied'); }, 1200);
+                })
+                .catch(() => {
+                    showAlert('Failed to copy text to clipboard. Please try manually.');
+                });
         };
     });
 }
