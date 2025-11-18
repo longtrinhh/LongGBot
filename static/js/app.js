@@ -556,10 +556,23 @@ function sendMessage() {
         const reader = response.body.getReader();
         currentStreamReader = reader;
         const decoder = new TextDecoder();
+        let lineBuffer = ''; // Buffer for incomplete lines across chunks
         
         function readStream() {
             return reader.read().then(({ done, value }) => {
                 if (done) {
+                    // Process any remaining buffered line
+                    if (lineBuffer.trim().startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(lineBuffer.trim().slice(6));
+                            if (data.conversation_id && !window.currentConversationId) {
+                                window.currentConversationId = data.conversation_id;
+                            }
+                        } catch (e) {
+                            console.warn('Failed to parse final buffered line:', e);
+                        }
+                    }
+                    
                     sendBtn.classList.remove('loading');
                     sendBtn.disabled = false;
                     sendBtn.style.display = 'flex';
@@ -571,9 +584,18 @@ function sendMessage() {
                     return;
                 }
                 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
+                // Use {stream: true} to handle incomplete UTF-8 sequences at chunk boundaries
+                const chunk = decoder.decode(value, {stream: true});
                 
+                // Prepend any buffered content from previous chunk
+                const fullChunk = lineBuffer + chunk;
+                const lines = fullChunk.split('\n');
+                
+                // Keep the last line in buffer if it doesn't end with \n (incomplete)
+                // If chunk ends with \n, the last element after split will be empty string
+                lineBuffer = lines.pop() || '';
+                
+                // Process complete lines only
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
                         try {
@@ -774,7 +796,8 @@ function sendMessage() {
                                 return;
                             }
                         } catch (e) {
-                            // Ignore JSON parse errors for incomplete chunks
+                            // Skip lines with JSON parse errors (shouldn't happen with proper buffering)
+                            console.warn('Failed to parse SSE line:', line, e);
                         }
                     }
                 }

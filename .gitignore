@@ -191,3 +191,4 @@ config.py
 # Firebase config (frontend, do not commit)
 firebase-config.js
 firebase-init.js
+longgbot-api/
