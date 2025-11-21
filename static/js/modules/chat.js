@@ -1,6 +1,7 @@
 // Chat logic
 import { getCachedElement, showAlert, showCodeModal, hideAllSelectors, hideSidebarOnMobile } from './ui.js';
 import { fetchWithCode, cancelStream } from './api.js';
+import { updateConversationCache } from './cache.js';
 import { renderMath, convertSquareBracketMath, safeCopy, markdownToPlain, extractSources, linkifyReferences } from './utils.js';
 
 let currentStreamReader = null;
@@ -263,6 +264,14 @@ export function sendMessage(currentImageData, currentConversationId, setCurrentC
 
                                         // Update the raw markdown data attribute for copy buttons
                                         assistantMessageDiv.setAttribute('data-raw-markdown', fullResponse);
+
+                                        // Update cache with new messages
+                                        if (currentConversationId) {
+                                            updateConversationCache(currentConversationId, [
+                                                { role: 'user', content: message },
+                                                { role: 'assistant', content: fullResponse }
+                                            ]);
+                                        }
                                     }
 
                                     sendBtn.classList.remove('loading');

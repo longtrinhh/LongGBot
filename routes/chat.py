@@ -3,6 +3,7 @@ from ai_client import ask_ai, ask_ai_stream
 from shared_context import (
     get_user_model, get_firestore_conversation, create_firestore_conversation,
     add_firestore_message, set_conversation_title_if_default, get_user_document,
+    add_firestore_messages_batch,
     sanitize_input
 )
 from routes.general import get_user_key, check_rate_limit, get_hashed_codes, is_free_model
@@ -28,32 +29,35 @@ def limit_context_to_tokens(messages, max_tokens=30000):
     # Reserve tokens for system prompt and current user message
     reserved_tokens = 2000
     available_tokens = max_tokens - reserved_tokens
-    
     total_tokens = 0
     limited_messages = []
     
     # Start from the most recent messages and work backwards
     for message in reversed(messages):
-        content = message.get('content', '')
-        if isinstance(content, list):
-            # Handle multimodal content
-            text_content = ''
-            for item in content:
-                if item.get('type') == 'text':
-                    text_content += item.get('text', '')
+        # Optimization 2: Use pre-calculated token count if available
+        if 'token_count' in message:
+            msg_tokens = message['token_count']
         else:
-            text_content = str(content)
+            # Fallback for legacy messages or complex content
+            content = message.get('content', '')
+            if isinstance(content, list):
+                # Handle multimodal content
+                text_content = ""
+                for item in content:
+                    if item.get('type') == 'text':
+                        text_content += item.get('text', '')
+                msg_tokens = estimate_tokens(text_content)
+            else:
+                msg_tokens = estimate_tokens(content)
         
-        # Use fast estimation instead of tiktoken
-        message_tokens = estimate_tokens(text_content)
-        
-        if total_tokens + message_tokens > available_tokens:
+        if total_tokens + msg_tokens > available_tokens:
             break
             
-        total_tokens += message_tokens
-        limited_messages.insert(0, message)  # Insert at beginning to maintain order
+        total_tokens += msg_tokens
+        limited_messages.append(message)
     
-    return limited_messages
+    # Reverse back to chronological order
+    return list(reversed(limited_messages))
 
 @chat_bp.route('/chat', methods=['POST'])
 def chat():
@@ -118,6 +122,7 @@ def chat():
         
         # If there is a stored document and it hasn't been injected into this conversation yet,
         # inject it once as a system message so it persists in history even after removal.
+        pending_messages = []
         document = get_user_document(user_key)
         if document:
             injected_conv = document.get('injected_conversation_id')
@@ -130,8 +135,8 @@ def chat():
                     f"{document['content']}\n"
                     f"--- DOCUMENT CONTENT END ---"
                 )
-                # Add to persistent history
-                add_firestore_message(user_key, conversation_id, { 'role': 'system', 'content': system_text })
+                # Add to persistent history (batched later)
+                pending_messages.append({ 'role': 'system', 'content': system_text })
                 # Also include in the in-memory context for this immediate call
                 context = (context or []) + [{ 'role': 'system', 'content': system_text }]
                 # Mark as injected for this conversation
@@ -148,8 +153,11 @@ def chat():
         response = ask_ai(final_message, model, context, image_bytes)
         
         # Batch Firestore writes for better performance
-        add_firestore_message(user_key, conversation_id, {'role': 'user', 'content': message})
-        add_firestore_message(user_key, conversation_id, {'role': 'assistant', 'content': response})
+        messages_to_save = pending_messages + [
+            {'role': 'user', 'content': message},
+            {'role': 'assistant', 'content': response}
+        ]
+        add_firestore_messages_batch(user_key, conversation_id, messages_to_save)
         
         # Set title after messages are added (single call instead of checking first)
         set_conversation_title_if_default(user_key, conversation_id, message)
@@ -220,6 +228,7 @@ def chat_stream():
                 return jsonify({'error': 'Invalid image data'}), 400
 
         # Inject document once as a system message in this conversation if needed
+        pending_messages = []
         document = get_user_document(user_key)
         if document:
             injected_conv = document.get('injected_conversation_id')
@@ -232,8 +241,8 @@ def chat_stream():
                     f"{document['content']}\n"
                     f"--- DOCUMENT CONTENT END ---"
                 )
-                # Persist and include in streaming context immediately
-                add_firestore_message(user_key, conversation_id, { 'role': 'system', 'content': system_text })
+                # Persist and include in streaming context immediately (batched later)
+                pending_messages.append({ 'role': 'system', 'content': system_text })
                 context = (context or []) + [{ 'role': 'system', 'content': system_text }]
                 document['injected_conversation_id'] = conversation_id
                 
@@ -270,8 +279,11 @@ def chat_stream():
                             yield f"data: {json.dumps({'type': 'content', 'chunk': chunk, 'model': model, 'conversation_id': conversation_id})}\n\n"
                 
                 # Save only the actual response without thinking blocks
-                add_firestore_message(user_key, conversation_id, {'role': 'user', 'content': message})
-                add_firestore_message(user_key, conversation_id, {'role': 'assistant', 'content': full_response})
+                messages_to_save = pending_messages + [
+                    {'role': 'user', 'content': message},
+                    {'role': 'assistant', 'content': full_response}
+                ]
+                add_firestore_messages_batch(user_key, conversation_id, messages_to_save)
                 
                 set_conversation_title_if_default(user_key, conversation_id, message)
                 

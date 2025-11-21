@@ -1,16 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
     <title>LongGBot Assistant</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}?v={% if config.ENV == 'development' %}{{ range(1, 1000) | random }}{% else %}2.0{% endif %}" rel="stylesheet">
+    <link
+        href="{{ url_for('static', filename='css/style.css') }}?v={% if config.ENV == 'development' %}{{ range(1, 1000) | random }}{% else %}2.0{% endif %}"
+        rel="stylesheet">
     <link rel="icon" type="image/jpg" href="{{ url_for('static', filename='img/longgbot_log.jpg') }}" sizes="32x32">
     <!-- KaTeX for LaTeX math rendering -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+        integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
     <style>
-        .copy-code-btn, .copy-markdown-btn, .copy-plain-btn {
+        .copy-code-btn,
+        .copy-markdown-btn,
+        .copy-plain-btn {
             background: #f5f5f5;
             color: #333;
             border: 1px solid #ccc;
@@ -20,21 +27,28 @@
             margin: 2px 4px 2px 0;
             cursor: pointer;
             transition: background 0.2s, color 0.2s;
-            box-shadow: 0 2px 6px rgba(102,126,234,0.10);
+            box-shadow: 0 2px 6px rgba(102, 126, 234, 0.10);
             display: flex;
             align-items: center;
             justify-content: center;
             min-width: 32px;
             min-height: 32px;
         }
-        .copy-code-btn.copied, .copy-markdown-btn.copied, .copy-plain-btn.copied {
+
+        .copy-code-btn.copied,
+        .copy-markdown-btn.copied,
+        .copy-plain-btn.copied {
             background: #d1e7dd;
             color: #1976d2;
         }
-        .copy-code-btn:hover, .copy-markdown-btn:hover, .copy-plain-btn:hover {
+
+        .copy-code-btn:hover,
+        .copy-markdown-btn:hover,
+        .copy-plain-btn:hover {
             background: #e3e7ef;
             color: #1976d2;
         }
+
         .copy-btn-bar {
             display: flex;
             gap: 6px;
@@ -42,16 +56,19 @@
             margin-bottom: 0;
             justify-content: flex-end;
         }
+
         .copy-btn-bar-bottom {
             position: absolute;
             right: 10px;
             bottom: 10px;
             z-index: 10;
         }
+
         .message-content {
             position: relative;
             padding-bottom: 50px;
         }
+
         @media (max-width: 700px) {
             .copy-btn-bar-bottom {
                 position: relative;
@@ -60,23 +77,34 @@
                 margin-top: 15px;
                 text-align: right;
             }
+
             .message-content {
                 padding-bottom: 10px;
             }
         }
-        pre { position: relative; }
-        
+
+        pre {
+            position: relative;
+        }
+
         /* KaTeX math styling */
-        .katex { font-size: 1.1em; }
-        .katex-display { 
-            overflow-x: auto; 
-            overflow-y: hidden; 
+        .katex {
+            font-size: 1.1em;
+        }
+
+        .katex-display {
+            overflow-x: auto;
+            overflow-y: hidden;
             padding: 10px 0;
             margin: 1em 0;
         }
-        .message-content .katex { color: inherit; }
+
+        .message-content .katex {
+            color: inherit;
+        }
     </style>
 </head>
+
 <body>
     <!-- Mobile top bar -->
     <div class="topbar-mobile" id="topbarMobile">
@@ -94,32 +122,49 @@
                     <p>Advanced AI Assistant with Multiple Models</p>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                    <span id="premiumIndicator" class="premium-indicator{% if premium %} active{% endif %}" style="display: none; align-items: center;">
-                        <span style="color: #2ecc40; font-weight: bold; font-size: 0.85em;"><i class="fas fa-crown"></i> Premium</span>
+                    <span id="premiumIndicator" class="premium-indicator{% if premium %} active{% endif %}"
+                        style="display: none; align-items: center;">
+                        <span style="color: #2ecc40; font-weight: bold; font-size: 0.85em;"><i class="fas fa-crown"></i>
+                            Premium</span>
                     </span>
-                    <button id="enterCodeBtn" class="btn" style="font-size:0.85em;" onclick="showCodeModal()">Enter Premium Code</button>
+                    <button id="enterCodeBtn" class="btn" style="font-size:0.85em;" onclick="showCodeModal()">Enter
+                        Premium Code</button>
                 </div>
                 {% if premium %}
                 <div style="margin-bottom:8px;">
-                    <button class="btn" style="font-size:0.8em; padding:4px 8px; border:1px solid #dc3545; color:#dc3545; background:var(--color-bg);" onclick="logout()" title="Logout">
+                    <button class="btn"
+                        style="font-size:0.8em; padding:4px 8px; border:1px solid #dc3545; color:#dc3545; background:var(--color-bg);"
+                        onclick="logout()" title="Logout">
                         <i class="fas fa-sign-out-alt"></i> Logout
                     </button>
                 </div>
                 {% endif %}
                 <div class="section">
                     <div class="section-title"><i class="fas fa-cog"></i> Settings</div>
-                    <div class="current-model">Current Model: <span id="currentModel">{% for model_id, model_name in chat_models %}{% if model_id == current_model %}{{ model_name }}{% endif %}{% endfor %}</span></div>
-                    <button id="botInfoBtn" class="btn" style="font-size:0.95em; margin-top:8px;" onclick="showBotInfoModal()"><i class="fas fa-info-circle"></i> Website Info</button>
-                    <button class="btn" onclick="showModelSelector('chat')"><i class="fas fa-brain"></i> Change Chat Model</button>
-                    <button class="btn" onclick="showModelSelector('image')"><i class="fas fa-image"></i> Change Image Model</button>
+                    <div class="current-model">Current Model: <span id="currentModel">{% for model_id, model_name in
+                            chat_models %}{% if model_id == current_model %}{{ model_name }}{% endif %}{% endfor
+                            %}</span></div>
+                    <button id="botInfoBtn" class="btn" style="font-size:0.95em; margin-top:8px;"
+                        onclick="showBotInfoModal()"><i class="fas fa-info-circle"></i> Website Info</button>
+                    <button class="btn" onclick="showModelSelector('chat')"><i class="fas fa-brain"></i> Change Chat
+                        Model</button>
+                    <button class="btn" onclick="showModelSelector('image')"><i class="fas fa-image"></i> Change Image
+                        Model</button>
                 </div>
                 <div class="section" style="margin-top:auto;">
                     <div style="display:flex; gap:8px; margin-bottom:8px;">
-                        <button id="conversationListBtn" class="btn" style="font-size:1.2em;flex:1;" onclick="showConversationListModal()" title="Show Conversations"><i class="fas fa-comments"></i></button>
-                        <button id="newConversationBtn" class="btn" style="font-size:1.2em;flex:1;" onclick="createNewConversation()" title="New Conversation"><i class="fas fa-plus"></i></button>
+                        <button id="conversationListBtn" class="btn" style="font-size:1.2em;flex:1;"
+                            onclick="showConversationListModal()" title="Show Conversations"><i
+                                class="fas fa-comments"></i></button>
+                        <button id="newConversationBtn" class="btn" style="font-size:1.2em;flex:1;"
+                            onclick="createNewConversation()" title="New Conversation"><i
+                                class="fas fa-plus"></i></button>
                     </div>
-                    <button id="darkModeToggle" class="btn" style="font-size:1.2em; margin-bottom:8px;" aria-label="Toggle dark mode" onclick="toggleDarkMode()"><i class="fas fa-moon"></i></button>
-                    <button class="btn" onclick="showImageGenerator()" {% if not premium %}disabled title="Premium required. Enter a code to unlock."{% endif %}><i class="fas fa-paint-brush"></i> Generate Image</button>
+                    <button id="darkModeToggle" class="btn" style="font-size:1.2em; margin-bottom:8px;"
+                        aria-label="Toggle dark mode" onclick="toggleDarkMode()"><i class="fas fa-moon"></i></button>
+                    <button class="btn" onclick="showImageGenerator()" {% if not premium %}disabled
+                        title="Premium required. Enter a code to unlock." {% endif %}><i class="fas fa-paint-brush"></i>
+                        Generate Image</button>
                 </div>
             </div>
 
@@ -140,11 +185,15 @@
 
                 <div class="chat-input-container">
                     <div class="chat-input-wrapper">
-                        <textarea id="messageInput" class="chat-input" placeholder="Type your message here..." onkeydown="handleKeyPress(event)" onpaste="handlePaste(event)"></textarea>
-                        <button class="upload-btn" onclick="showImageUpload()" id="uploadBtn" {% if not premium %}disabled title="Premium required. Enter a code to unlock."{% endif %}><i class="fas fa-image"></i></button>
-                        <button class="upload-btn" onclick="showDocumentUpload()" id="documentUploadBtn" title="Upload PDF or Word document" {% if not premium %}disabled title="Premium required. Enter a code to unlock."{% endif %}><i class="fas fa-file-alt"></i></button>
-                        <button class="send-btn" onclick="sendMessage()" id="sendBtn"><i class="fas fa-paper-plane"></i></button>
-                        <button class="stop-btn" onclick="stopResponse()" id="stopBtn"><i class="fas fa-stop"></i></button>
+                        <textarea id="messageInput" class="chat-input" placeholder="Type your message here..."
+                            onkeydown="handleKeyPress(event)" onpaste="handlePaste(event)"></textarea>
+                        <button class="upload-btn" onclick="showUploadMenu()" id="uploadBtn" {% if not premium
+                            %}disabled title="Premium required. Enter a code to unlock." {% endif %}><i
+                                class="fas fa-paperclip"></i></button>
+                        <button class="send-btn" onclick="sendMessage()" id="sendBtn"><i
+                                class="fas fa-paper-plane"></i></button>
+                        <button class="stop-btn" onclick="stopResponse()" id="stopBtn"><i
+                                class="fas fa-stop"></i></button>
                     </div>
                 </div>
             </div>
@@ -157,7 +206,8 @@
             <div class="section-title">Select Chat Model</div>
             <div class="model-list-container">
                 {% for model_id, model_name in chat_models %}
-                <div class="model-option" data-model-id="{{ model_id }}" onclick="modelOptionClick('{{ model_id }}', 'chat')">{{ model_name }}</div>
+                <div class="model-option" data-model-id="{{ model_id }}"
+                    onclick="modelOptionClick('{{ model_id }}', 'chat')">{{ model_name }}</div>
                 {% endfor %}
             </div>
             <button class="btn" onclick="hideModelSelector('chat')">Cancel</button>
@@ -170,10 +220,23 @@
             <div class="section-title">Select Image Model</div>
             <div class="model-list-container">
                 {% for model_id, model_name in image_models %}
-                <div class="model-option" data-model-id="{{ model_id }}" onclick="modelOptionClick('{{ model_id }}', 'image')">{{ model_name }}</div>
+                <div class="model-option" data-model-id="{{ model_id }}"
+                    onclick="modelOptionClick('{{ model_id }}', 'image')">{{ model_name }}</div>
                 {% endfor %}
             </div>
             <button class="btn" onclick="hideModelSelector('image')">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Upload Menu Modal -->
+    <div id="uploadMenuModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width:320px;">
+            <div class="section-title"><i class="fas fa-paperclip"></i> Upload</div>
+            <button class="btn" onclick="hideUploadMenu(); showImageUpload();" style="margin-bottom: 10px;"><i
+                    class="fas fa-image"></i> Upload Image</button>
+            <button class="btn" onclick="hideUploadMenu(); showDocumentUpload();"><i class="fas fa-file-alt"></i> Upload
+                Document (PDF/Word)</button>
+            <button class="btn" style="margin-top: 15px;" onclick="hideUploadMenu()">Cancel</button>
         </div>
     </div>
 
@@ -190,7 +253,8 @@
         <div class="modal-content">
             <div class="section-title">Upload Image</div>
             <input type="file" id="imageFile" accept="image/*" class="image-upload">
-            <button class="btn" onclick="document.getElementById('imageFile').click()"><i class="fas fa-folder-open"></i> Choose File</button>
+            <button class="btn" onclick="document.getElementById('imageFile').click()"><i
+                    class="fas fa-folder-open"></i> Choose File</button>
             <button class="btn" onclick="uploadImage()"><i class="fas fa-upload"></i> Upload</button>
             <button class="btn" onclick="hideImageUpload()">Cancel</button>
         </div>
@@ -200,9 +264,11 @@
     <div id="documentUploadModal" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <div class="section-title">Upload Document</div>
-            <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">Upload PDF or Word documents (.pdf, .docx) to analyze and ask questions about their content.</p>
+            <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">Upload PDF or Word documents (.pdf, .docx) to
+                analyze and ask questions about their content.</p>
             <input type="file" id="documentFile" accept=".pdf,.docx" class="image-upload">
-            <button class="btn" onclick="document.getElementById('documentFile').click()"><i class="fas fa-folder-open"></i> Choose File</button>
+            <button class="btn" onclick="document.getElementById('documentFile').click()"><i
+                    class="fas fa-folder-open"></i> Choose File</button>
             <button class="btn" onclick="uploadDocument()"><i class="fas fa-upload"></i> Upload</button>
             <button class="btn" onclick="hideDocumentUpload()">Cancel</button>
         </div>
@@ -212,7 +278,8 @@
     <div id="imageGeneratorModal" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <div class="section-title">Generate Image</div>
-            <textarea id="imagePrompt" placeholder="Describe the image you want to generate..." style="width: 100%; height: 80px; margin-bottom: 10px; padding: 8px; border-radius: 6px; border: 1px solid #ddd;"></textarea>
+            <textarea id="imagePrompt" placeholder="Describe the image you want to generate..."
+                style="width: 100%; height: 80px; margin-bottom: 10px; padding: 8px; border-radius: 6px; border: 1px solid #ddd;"></textarea>
             <button class="btn" onclick="generateImage()"><i class="fas fa-magic"></i> Generate</button>
             <button class="btn" onclick="hideImageGenerator()">Cancel</button>
         </div>
@@ -222,7 +289,8 @@
     <div id="codeModal" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <div class="section-title">Enter Premium Code</div>
-            <input type="text" id="codeInput" placeholder="Enter code here..." style="width:100%;margin-bottom:10px;font-size:0.95em;padding:8px;" />
+            <input type="text" id="codeInput" placeholder="Enter code here..."
+                style="width:100%;margin-bottom:10px;font-size:0.95em;padding:8px;" />
             <button class="btn" onclick="submitCode()">Submit</button>
             <button class="btn" onclick="hideCodeModal()">Cancel</button>
             <div id="codeError" style="color:red;margin-top:8px;"></div>
@@ -234,24 +302,31 @@
         <div class="modal-content" style="max-width:420px;">
             <div class="section-title"><i class="fas fa-info-circle"></i> Website Info</div>
             <ul style="font-size:0.97em;line-height:1.5;margin:0 0 10px 0;padding-left:18px;">
-                <li><b>GPT 4o Mini Search</b>: Free, Web search, <span style="color:#b8860b">No image analysis</span></li>
-                <li><b>Claude Sonnet 4.5</b>: Premium, Web search, <span style="color:#2ecc40">Image analysis</span></li>
+                <li><b>GPT 4o Mini Search</b>: Free, Web search, <span style="color:#b8860b">No image analysis</span>
+                </li>
+                <li><b>Claude Sonnet 4.5</b>: Premium, Web search, <span style="color:#2ecc40">Image analysis</span>
+                </li>
                 <li><b>Claude Opus 4</b>: Premium, Web search, <span style="color:#2ecc40">Image analysis</span></li>
                 <li><b>GPT o3 High</b>: Premium, Web search, <span style="color:#2ecc40">Image analysis</span></li>
-                <li><b>GPT o3 Mini Online</b>: Premium, Web search, <span style="color:#b8860b">No image analysis</span></li>
+                <li><b>GPT o3 Mini Online</b>: Premium, Web search, <span style="color:#b8860b">No image analysis</span>
+                </li>
                 <li><b>GPT 5</b>: Premium, Web search, <span style="color:#2ecc40">Image analysis</span></li>
                 <li><b>Gemini 2.5 Pro</b>: Premium, Web search, <span style="color:#2ecc40">Image analysis</span></li>
                 <li><b>Grok 4</b>: Premium, Web search, <span style="color:#2ecc40">Image analysis</span></li>
                 <li><b>DeepSeek R1</b>: Free, Web search, <span style="color:#b8860b">No image analysis</span></li>
                 <li><b>DeepSeek V3.1</b>: Free, Web search, <span style="color:#b8860b">No image analysis</span></li>
                 <li><b>GPT 5 Nano</b>: Free, Web search, <span style="color:#b8860b">No image analysis</span></li>
-                <li><b>Perplexity Sonar Reasoning Pro</b>: Premium, Web search, <span style="color:#b8860b">No image analysis</span></li>
+                <li><b>Perplexity Sonar Reasoning Pro</b>: Premium, Web search, <span style="color:#b8860b">No image
+                        analysis</span></li>
                 <li><b>Qwen3 Coder 480B</b>: Free, Web search, <span style="color:#b8860b">No image analysis</span></li>
                 <li><b>Kimi K2 Instruct</b>: Free, Web search, <span style="color:#b8860b">No image analysis</span></li>
                 <li><b>All Image Models</b>: Premium, <span style="color:#2ecc40">Image generation</span></li>
             </ul>
-            <div style="font-size:0.93em;color:#888;">Use the <b>Enter Premium Code</b> button to unlock all features and models.</div>
-            <div style="font-size:0.85em;color:#999;margin-top:12px;padding-top:12px;border-top:1px solid #ddd;">Creator: <a href="mailto:long@longgbot.cv" style="color:#667eea;text-decoration:none;">long@longgbot.cv</a></div>
+            <div style="font-size:0.93em;color:#888;">Use the <b>Enter Premium Code</b> button to unlock all features
+                and models.</div>
+            <div style="font-size:0.85em;color:#999;margin-top:12px;padding-top:12px;border-top:1px solid #ddd;">
+                Creator: <a href="mailto:long@longgbot.cv"
+                    style="color:#667eea;text-decoration:none;">long@longgbot.cv</a></div>
             <button class="btn" style="margin-top:18px;" onclick="hideBotInfoModal()">Close</button>
         </div>
     </div>
@@ -259,10 +334,12 @@
     <!-- Conversation List Modal -->
     <div id="conversationListModal" class="modal-overlay" style="display:none;z-index:3000;">
         <div class="modal-content" style="max-width:400px;">
-            <div class="section-title"><i class="fas fa-comments"></i> Conversations (Max 10 for Premium, 2 for Normal)</div>
+            <div class="section-title"><i class="fas fa-comments"></i> Conversations (Max 10 for Premium, 2 for Normal)
+            </div>
             <div id="conversationListContainer"></div>
             <button class="btn" style="margin-top:18px;" onclick="hideConversationListModal()">Close</button>
-            <button class="btn primary" style="margin-top:8px;float:right;" onclick="createNewConversation()"><i class="fas fa-plus"></i> New Conversation</button>
+            <button class="btn primary" style="margin-top:8px;float:right;" onclick="createNewConversation()"><i
+                    class="fas fa-plus"></i> New Conversation</button>
         </div>
     </div>
 
@@ -291,8 +368,12 @@
     <!-- External libraries -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- KaTeX for LaTeX math rendering -->
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"
+        integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8"
+        crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script>
 
     <!-- Application JavaScript -->
     <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
@@ -301,4 +382,5 @@
     <!-- Sidebar overlay -->
     <div id="sidebarOverlay" class="sidebar-overlay" style="display: none;" onclick="toggleSidebar()"></div>
 </body>
+
 </html>

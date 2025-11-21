@@ -239,6 +239,9 @@ def add_firestore_message(user_id, conversation_id, message):
             logger.warning(f"Conversation {conversation_id} has too many messages")
             return False
         
+        # Optimization 2: Pre-calculate token count
+        message['token_count'] = estimate_tokens(message.get('content', ''))
+        
         messages.append(message)
         
         doc_ref.set({
@@ -252,6 +255,64 @@ def add_firestore_message(user_id, conversation_id, message):
         return True
     except Exception as e:
         logger.error(f"Error adding message to conversation {conversation_id}: {e}")
+        return False
+
+def estimate_tokens(text):
+    """Simple token estimation: ~4 chars per token"""
+    if not text:
+        return 0
+    return len(str(text)) // 4
+
+def add_firestore_messages_batch(user_id, conversation_id, messages_list):
+    """Add multiple messages in a single batch write (append to array)"""
+    if not validate_conversation_id(conversation_id):
+        logger.warning(f"Invalid conversation_id format: {conversation_id}")
+        return False
+    
+    if not verify_conversation_ownership(user_id, conversation_id):
+        logger.warning(f"User {user_id} attempted to modify conversation {conversation_id} without ownership")
+        return False
+        
+    client = get_firestore_client()
+    if not client:
+        logger.error("Firestore client not available")
+        return False
+        
+    try:
+        doc_ref = client.collection(FIRESTORE_COLLECTION).document(f"{user_id}__{conversation_id}")
+        doc = doc_ref.get(timeout=5.0)
+        
+        if doc.exists:
+            current_messages = doc.to_dict().get("messages", [])
+            existing_title = doc.to_dict().get("title", "New Conversation")
+        else:
+            current_messages = []
+            existing_title = "New Conversation"
+            
+        if len(current_messages) + len(messages_list) >= 1000:
+            logger.warning(f"Conversation {conversation_id} has too many messages")
+            return False
+            
+        for msg in messages_list:
+            content = msg.get('content', '')
+            if isinstance(content, str):
+                msg['content'] = sanitize_input(content)
+            
+            # Optimization 2: Pre-calculate token count
+            msg['token_count'] = estimate_tokens(msg.get('content', ''))
+            
+            current_messages.append(msg)
+            
+        doc_ref.set({
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "messages": current_messages,
+            "title": existing_title,
+            "last_updated": datetime.utcnow().isoformat() + 'Z'
+        }, timeout=5.0)
+        return True
+    except Exception as e:
+        logger.error(f"Error in batch write: {e}")
         return False
 
 def create_firestore_conversation(user_id, title=None):
@@ -399,4 +460,4 @@ def has_user_document(user_key: str) -> bool:
     user_key_str = str(user_key)
     return user_key_str in user_documents
 
-load_data() 
+load_data()

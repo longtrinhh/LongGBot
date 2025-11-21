@@ -58,6 +58,11 @@ import {
     hasPremiumAccess
 } from './modules/api.js';
 
+import {
+    getCachedConversation,
+    cacheConversation
+} from './modules/cache.js';
+
 // Global State
 let currentImageData = null;
 let currentImageModel = localStorage.getItem('selectedImageModel') || 'imagen-4.0-ultra-generate-exp-05-20';
@@ -231,6 +236,17 @@ function setupEventListeners() {
     };
     window.handlePaste = (e) => handlePaste(e, (data) => currentImageData = data);
 
+    // Upload menu functions
+    window.showUploadMenu = () => {
+        const modal = document.getElementById('uploadMenuModal');
+        if (modal) modal.style.display = 'flex';
+    };
+    window.hideUploadMenu = () => {
+        const modal = document.getElementById('uploadMenuModal');
+        if (modal) modal.style.display = 'none';
+    };
+
+
     // Input event listeners
     const messageInput = document.getElementById('messageInput');
     if (messageInput) {
@@ -278,21 +294,60 @@ function setupViewportHandling() {
 
 // Callbacks to bridge modules
 function switchConversationCallback(conversationId) {
-    // Load messages for the selected conversation
-    getConversationMessages(conversationId)
-        .then(data => {
-            const chatMessages = document.getElementById('chatMessages');
-            chatMessages.innerHTML = '';
-            if (data.messages && data.messages.length > 0) {
-                data.messages.forEach(msg => {
-                    addMessage(msg.role === 'user' ? 'user' : 'assistant', msg.content);
-                });
-            } else {
-                addMessage('assistant', "New conversation started! How can I help you?");
-            }
-        });
     // Store the current conversation ID for sending messages
     currentConversationId = conversationId;
+
+    const chatMessages = document.getElementById('chatMessages');
+    chatMessages.innerHTML = '';
+
+    // 1. Try to load from cache first for immediate display
+    const cachedMessages = getCachedConversation(conversationId);
+    if (cachedMessages) {
+        cachedMessages.forEach(msg => {
+            addMessage(msg.role === 'user' ? 'user' : 'assistant', msg.content);
+        });
+        // Scroll to bottom after loading cache
+        setTimeout(() => {
+            smoothScrollToBottom(chatMessages, false);
+        }, 0);
+    }
+
+    // 2. Fetch from backend to get updates (stale-while-revalidate)
+    getConversationMessages(conversationId)
+        .then(data => {
+            // If we have cached messages, we only want to update if there are changes
+            // For simplicity in this version, we'll just re-render if we didn't have cache,
+            // or if the server has more messages. 
+            // A better approach would be to diff, but for now let's just update the cache
+            // and only re-render if we had nothing cached.
+
+            if (data.messages && data.messages.length > 0) {
+                // Update cache with fresh data
+                cacheConversation(conversationId, data.messages);
+
+                // If we didn't have cache, render now
+                if (!cachedMessages) {
+                    data.messages.forEach(msg => {
+                        addMessage(msg.role === 'user' ? 'user' : 'assistant', msg.content);
+                    });
+                } else if (data.messages.length > cachedMessages.length) {
+                    // If server has more messages, append the new ones
+                    // This is a simple check; in reality we might want to be more robust
+                    const newMessages = data.messages.slice(cachedMessages.length);
+                    newMessages.forEach(msg => {
+                        addMessage(msg.role === 'user' ? 'user' : 'assistant', msg.content);
+                    });
+                }
+            } else if (!cachedMessages) {
+                addMessage('assistant', "New conversation started! How can I help you?");
+            }
+        })
+        .catch(err => {
+            console.error('Failed to fetch conversation:', err);
+            if (!cachedMessages) {
+                addMessage('assistant', "Failed to load conversation. Please try again.");
+            }
+        });
 }
 
 function createNewConversationCallback() {
