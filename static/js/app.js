@@ -236,15 +236,31 @@ function setupEventListeners() {
     };
     window.handlePaste = (e) => handlePaste(e, (data) => currentImageData = data);
 
-    // Upload menu functions
+    // Upload menu overlay functions
     window.showUploadMenu = () => {
-        const modal = document.getElementById('uploadMenuModal');
-        if (modal) modal.style.display = 'flex';
+        const overlay = document.getElementById('uploadOverlay');
+        if (overlay) {
+            const isVisible = overlay.style.display === 'flex';
+            overlay.style.display = isVisible ? 'none' : 'flex';
+        }
     };
+
     window.hideUploadMenu = () => {
-        const modal = document.getElementById('uploadMenuModal');
-        if (modal) modal.style.display = 'none';
+        const overlay = document.getElementById('uploadOverlay');
+        if (overlay) overlay.style.display = 'none';
     };
+
+    // Click outside to close overlay
+    document.addEventListener('click', (e) => {
+        const overlay = document.getElementById('uploadOverlay');
+        const uploadBtn = document.getElementById('uploadBtn');
+        if (overlay && overlay.style.display === 'flex') {
+            if (!overlay.contains(e.target) && !uploadBtn.contains(e.target)) {
+                overlay.style.display = 'none';
+            }
+        }
+    });
+
 
 
     // Input event listeners

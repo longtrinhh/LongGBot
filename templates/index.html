@@ -10,6 +10,7 @@
     <link
         href="{{ url_for('static', filename='css/style.css') }}?v={% if config.ENV == 'development' %}{{ range(1, 1000) | random }}{% else %}2.0{% endif %}"
         rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/modules/upload_overlay.css') }}" rel="stylesheet">
     <link rel="icon" type="image/jpg" href="{{ url_for('static', filename='img/longgbot_log.jpg') }}" sizes="32x32">
     <!-- KaTeX for LaTeX math rendering -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
@@ -184,6 +185,11 @@
                 </div>
 
                 <div class="chat-input-container">
+                    <!-- Upload overlay menu -->
+                    <div id="uploadOverlay" class="upload-overlay" style="display: none;">
+                        <button class="upload-option-btn" onclick="hideUploadMenu(); showImageUpload();" title="Upload Image"><i class="fas fa-image"></i></button>
+                        <button class="upload-option-btn" onclick="hideUploadMenu(); showDocumentUpload();" title="Upload Document (PDF/Word)"><i class="fas fa-file-alt"></i></button>
+                    </div>
                     <div class="chat-input-wrapper">
                         <textarea id="messageInput" class="chat-input" placeholder="Type your message here..."
                             onkeydown="handleKeyPress(event)" onpaste="handlePaste(event)"></textarea>

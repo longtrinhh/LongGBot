@@ -189,7 +189,7 @@
     display: flex !important;
     align-items: center;
     justify-content: space-between;
-    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    background: linear-gradient(135deg, #1976d2, #1565c0) !important;
     color: #fff !important;
     padding: 10px 16px;
     font-size: 1.1rem;
@@ -208,7 +208,7 @@
 }
 
 body.dark-mode .topbar-mobile {
-    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    background: linear-gradient(135deg, #1976d2, #1565c0) !important;
     color: #fff !important;
 }
 

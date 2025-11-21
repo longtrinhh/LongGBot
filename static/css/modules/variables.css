@@ -2,8 +2,8 @@
     --color-bg: #f5f7fa;
     --color-bg-alt: #fff;
     --color-text: #222;
-    --color-primary: #4a4a8a;
-    --color-primary-light: #4a4a8a;
+    --color-primary: #1976d2;
+    --color-primary-light: #1976d2;
     --color-secondary: #ededed;
     --color-border: #e0e0e0;
     --color-btn-bg: #ededed;
@@ -16,9 +16,9 @@
     --color-input-border: #e0e0e0;
     --color-message-bg: #f5f5f5;
     --color-message-text: #111;
-    --color-link: #4a4a8a;
+    --color-link: #1976d2;
     --color-shadow: rgba(0, 0, 0, 0.1);
-    --color-user-msg: linear-gradient(135deg, rgba(74, 74, 138, 0.1), rgba(74, 74, 138, 0.05));
+    --color-user-msg: linear-gradient(135deg, rgba(25, 118, 210, 0.1), rgba(25, 118, 210, 0.05));
     --color-assistant-msg: #f5f5f5;
     --topbar-height: 48px;
     --inputbar-height: 60px;
@@ -46,6 +46,6 @@ body.dark-mode {
     --color-message-text: #f1f1f1;
     --color-link: #8ab4f8;
     --color-shadow: rgba(0, 0, 0, 0.5);
-    --color-user-msg: linear-gradient(135deg, rgba(74, 74, 138, 0.3), rgba(74, 74, 138, 0.15));
+    --color-user-msg: linear-gradient(135deg, rgba(25, 118, 210, 0.3), rgba(25, 118, 210, 0.15));
     --color-assistant-msg: #23262f;
 }
