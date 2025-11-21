@@ -23,6 +23,15 @@ logger = logging.getLogger(__name__)
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
+# Disable caching for static files during development
+@app.after_request
+def add_header(response):
+    if app.debug:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 # Register Blueprints
 app.register_blueprint(general_bp)
 app.register_blueprint(chat_bp)

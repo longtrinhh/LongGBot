@@ -79,11 +79,9 @@ def is_free_model(model):
     """Check if a model is in the free tier"""
     free_models = [
         'gpt-4o-mini-search-preview-2025-03-11',
-        'gpt-5-nano:free',
         'deepseek-v3.1:free',
         'gpt-oss-120b:free',
         'deepseek-r1-0528:free',
-        'qwen3-coder-480b-a35b-instruct:free',
         'kimi-k2-instruct-0905:free'
     ]
     return model in free_models

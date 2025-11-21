@@ -60,8 +60,8 @@ import {
 
 // Global State
 let currentImageData = null;
-let currentImageModel = 'imagen-4.0-ultra-generate-exp-05-20';
-let currentChatModel = window.CURRENT_MODEL || 'gpt-4o-mini-search-preview-2025-03-11';
+let currentImageModel = localStorage.getItem('selectedImageModel') || 'imagen-4.0-ultra-generate-exp-05-20';
+let currentChatModel = localStorage.getItem('selectedChatModel') || window.CURRENT_MODEL || 'gpt-4o-mini-search-preview-2025-03-11';
 let currentConversationId = null;
 
 // Constants
@@ -72,6 +72,7 @@ const PREMIUM_MODELS = [
     "gemini-2.5-pro-preview-05-06",
     "grok-4-0709",
     "gpt-5-chat-latest",
+    "gpt-5.1",
     "deepseek-r1-0528",
     "llama-4-maverick-17b-128e-instruct",
     "phi-4-multimodal-instruct",
@@ -85,11 +86,9 @@ const PREMIUM_MODELS = [
 ];
 const FREE_MODELS = [
     "gpt-4o-mini-search-preview-2025-03-11",
-    "gpt-5-nano:free",
     "deepseek-v3.1:free",
     "gpt-oss-120b:free",
     "deepseek-r1-0528:free",
-    "qwen3-coder-480b-a35b-instruct:free",
     "kimi-k2-instruct-0905:free"
 ];
 
@@ -108,6 +107,38 @@ document.addEventListener('DOMContentLoaded', () => {
     const darkModeEnabled = localStorage.getItem('darkMode') === 'true';
     if (darkModeEnabled) {
         setDarkMode(true);
+    }
+
+    // Initialize model display from localStorage
+    const savedModel = localStorage.getItem('selectedChatModel');
+    if (savedModel && document.getElementById('currentModel')) {
+        document.getElementById('currentModel').textContent = MODEL_ID_TO_NAME[savedModel] || savedModel;
+        // Mark the selected model in the modal
+        const modelOptions = document.querySelectorAll('#chatModelModal .model-option');
+        modelOptions.forEach(option => {
+            const optionModelId = option.getAttribute('data-model-id');
+            if (optionModelId === savedModel) {
+                option.classList.add('selected');
+            } else {
+                option.classList.remove('selected');
+            }
+        });
+        // Also update the backend to sync with frontend if needed
+        setModel(savedModel, 'chat').catch(err => console.error('Failed to sync model:', err));
+    }
+
+    // Initialize image model display from localStorage
+    const savedImageModel = localStorage.getItem('selectedImageModel');
+    if (savedImageModel) {
+        const imageModelOptions = document.querySelectorAll('#imageModelModal .model-option');
+        imageModelOptions.forEach(option => {
+            const optionModelId = option.getAttribute('data-model-id');
+            if (optionModelId === savedImageModel) {
+                option.classList.add('selected');
+            } else {
+                option.classList.remove('selected');
+            }
+        });
     }
 
     // Setup event listeners
@@ -331,13 +362,15 @@ function submitCodeCallback() {
 }
 
 function modelOptionClick(modelId, type) {
-    if (PREMIUM_MODELS.includes(modelId) && !FREE_MODELS.includes(modelId) && !hasPremiumAccess()) {
+    // Block access if model is NOT in free models AND user doesn't have premium
+    if (!FREE_MODELS.includes(modelId) && !hasPremiumAccess()) {
         showCodeModal('Enter a valid premium code to use this model.');
         return;
     }
 
     if (type === 'chat') {
         currentChatModel = modelId;
+        localStorage.setItem('selectedChatModel', modelId);
         document.getElementById('currentModel').textContent = MODEL_ID_TO_NAME[modelId] || modelId;
         // Update chat model UI only
         const modelOptions = document.querySelectorAll('#chatModelModal .model-option');
@@ -356,6 +389,7 @@ function modelOptionClick(modelId, type) {
         });
     } else if (type === 'image') {
         currentImageModel = modelId;
+        localStorage.setItem('selectedImageModel', modelId);
         // Update image model UI only
         const modelOptions = document.querySelectorAll('#imageModelModal .model-option');
         modelOptions.forEach(option => {

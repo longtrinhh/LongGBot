@@ -196,7 +196,7 @@ export function sendMessage(currentImageData, currentConversationId, setCurrentC
 
                                         const thinkingHeader = document.createElement('div');
                                         thinkingHeader.className = 'thinking-header';
-                                        thinkingHeader.innerHTML = '<i class="fas fa-brain"></i> Thinking Process';
+                                        thinkingHeader.innerHTML = '<i class="fas fa-chevron-down"></i> Thinking Process';
 
                                         const thinkingContent = document.createElement('div');
                                         thinkingContent.className = 'thinking-content';

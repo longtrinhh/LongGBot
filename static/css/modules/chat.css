@@ -197,8 +197,10 @@ body.dark-mode .thinking-block:hover {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     opacity: 0.9;
+    cursor: pointer;
+    user-select: none;
 }
 
 body.dark-mode .thinking-header {
@@ -206,16 +208,32 @@ body.dark-mode .thinking-header {
 }
 
 .thinking-header i {
-    font-size: 0.95rem;
+    font-size: 0.85rem;
+    transition: transform 0.3s ease;
+}
+
+.thinking-block.collapsed .thinking-header i {
+    transform: rotate(-90deg);
 }
 
 .thinking-content {
     font-style: italic;
-    line-height: 1.6;
+    line-height: 1.5;
     color: var(--color-text);
-    opacity: 0.85;
+    opacity: 0.7;
     white-space: pre-wrap;
     word-wrap: break-word;
+    font-size: 0.75rem;
+    max-height: 500px;
+    overflow-y: auto;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.thinking-block.collapsed .thinking-content {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    margin: 0;
 }
 
 .response-content {

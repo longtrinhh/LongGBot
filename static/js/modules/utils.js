@@ -33,7 +33,6 @@ export function renderMath(element) {
                 delimiters: [
                     { left: '$$', right: '$$', display: true },
                     { left: '\\[', right: '\\]', display: true },
-                    { left: '$', right: '$', display: false },
                     { left: '\\(', right: '\\)', display: false }
                 ],
                 throwOnError: false,
