@@ -88,11 +88,11 @@ body.dark-mode .model-option {
 body.dark-mode .model-option:hover {
     background: #33374a !important;
     color: #ffffff !important;
-    border-color: #4a4a8a !important;
+    border-color: #1976d2 !important;
 }
 
 body.dark-mode .model-option.selected {
-    background: #4a4a8a !important;
+    background: #1976d2 !important;
     color: #ffffff !important;
     border-color: #6a6a9a !important;
 }
@@ -111,7 +111,7 @@ body.dark-mode .model-list-container::-webkit-scrollbar-thumb {
 }
 
 body.dark-mode .model-list-container::-webkit-scrollbar-thumb:hover {
-    background: #4a4a8a !important;
+    background: #1976d2 !important;
 }
 
 body.dark-mode .chat-input-container {
