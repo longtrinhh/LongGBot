@@ -4,6 +4,7 @@ import base64
 from io import BytesIO
 from PIL import Image
 from config import API_KEY, API_BASE_URL
+from ai_client import get_session
 
 logger = logging.getLogger(__name__)
 
@@ -47,33 +48,33 @@ class AIImageClient:
         }
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.base_url}/images/generations",
-                    json=data,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=300)
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        if result.get("data") and len(result["data"]) > 0:
-                            image_url = result["data"][0]["url"]
-                            async with session.get(image_url) as img_response:
-                                if img_response.status == 200:
-                                    image_bytes = await img_response.read()
-                                    if return_url:
-                                        return image_bytes, image_url
-                                    return image_bytes
-                                else:
-                                    logger.error(f"Failed to download generated image: {img_response.status}")
-                                    return (None, image_url) if return_url else None
-                        else:
-                            logger.error(f"No image data in response from {model}")
-                            return (None, None) if return_url else None
+            session = await get_session()
+            async with session.post(
+                f"{self.base_url}/images/generations",
+                json=data,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=300)
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    if result.get("data") and len(result["data"]) > 0:
+                        image_url = result["data"][0]["url"]
+                        async with session.get(image_url) as img_response:
+                            if img_response.status == 200:
+                                image_bytes = await img_response.read()
+                                if return_url:
+                                    return image_bytes, image_url
+                                return image_bytes
+                            else:
+                                logger.error(f"Failed to download generated image: {img_response.status}")
+                                return (None, image_url) if return_url else None
                     else:
-                        error_text = await response.text()
-                        logger.error(f"Error generating image: {response.status} - {error_text}")
+                        logger.error(f"No image data in response from {model}")
                         return (None, None) if return_url else None
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Error generating image: {response.status} - {error_text}")
+                    return (None, None) if return_url else None
         except Exception as e:
             logger.error(f"Error generating image: {e}")
             return (None, None) if return_url else None
@@ -97,30 +98,30 @@ class AIImageClient:
         }
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.base_url}/images/edits",
-                    json=data,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=300)
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        if result.get("data") and len(result["data"]) > 0:
-                            image_url = result["data"][0]["url"]
-                            async with session.get(image_url) as img_response:
-                                if img_response.status == 200:
-                                    return await img_response.read()
-                                else:
-                                    logger.error(f"Failed to download edited image: {img_response.status}")
-                                    return None
-                        else:
-                            logger.error(f"No image data in response from {model}")
-                            return None
+            session = await get_session()
+            async with session.post(
+                f"{self.base_url}/images/edits",
+                json=data,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=300)
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    if result.get("data") and len(result["data"]) > 0:
+                        image_url = result["data"][0]["url"]
+                        async with session.get(image_url) as img_response:
+                            if img_response.status == 200:
+                                return await img_response.read()
+                            else:
+                                logger.error(f"Failed to download edited image: {img_response.status}")
+                                return None
                     else:
-                        error_text = await response.text()
-                        logger.error(f"Error editing image: {response.status} - {error_text}")
+                        logger.error(f"No image data in response from {model}")
                         return None
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Error editing image: {response.status} - {error_text}")
+                    return None
         except Exception as e:
             logger.error(f"Error editing image: {e}")
             return None 

@@ -1,0 +1,51 @@
+:root {
+    --color-bg: #f5f7fa;
+    --color-bg-alt: #fff;
+    --color-text: #222;
+    --color-primary: #4a4a8a;
+    --color-primary-light: #4a4a8a;
+    --color-secondary: #ededed;
+    --color-border: #e0e0e0;
+    --color-btn-bg: #ededed;
+    --color-btn-text: #111;
+    --color-modal-bg: #fff;
+    --color-modal-text: #111;
+    --color-sidebar-bg: rgba(255, 255, 255, 0.95);
+    --color-sidebar-text: #222;
+    --color-input-bg: #fafbfc;
+    --color-input-border: #e0e0e0;
+    --color-message-bg: #f5f5f5;
+    --color-message-text: #111;
+    --color-link: #4a4a8a;
+    --color-shadow: rgba(0, 0, 0, 0.1);
+    --color-user-msg: linear-gradient(135deg, rgba(74, 74, 138, 0.1), rgba(74, 74, 138, 0.05));
+    --color-assistant-msg: #f5f5f5;
+    --topbar-height: 48px;
+    --inputbar-height: 60px;
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+body.dark-mode {
+    --color-bg: #181a20;
+    --color-bg-alt: #23262f;
+    --color-text: #f1f1f1;
+    --color-primary: #8ab4f8;
+    --color-primary-light: #8ab4f8;
+    --color-secondary: #23262f;
+    --color-border: #33374a;
+    --color-btn-bg: #23262f;
+    --color-btn-text: #f1f1f1;
+    --color-modal-bg: #23262f;
+    --color-modal-text: #f1f1f1;
+    --color-sidebar-bg: rgba(35, 38, 47, 0.95);
+    --color-sidebar-text: #f1f1f1;
+    --color-input-bg: #23262f;
+    --color-input-border: #33374a;
+    --color-message-bg: #23262f;
+    --color-message-text: #f1f1f1;
+    --color-link: #8ab4f8;
+    --color-shadow: rgba(0, 0, 0, 0.5);
+    --color-user-msg: linear-gradient(135deg, rgba(74, 74, 138, 0.3), rgba(74, 74, 138, 0.15));
+    --color-assistant-msg: #23262f;
+}
