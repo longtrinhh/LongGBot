@@ -7,3 +7,4 @@ requests
 PyPDF2
 python-docx
 tiktoken
+waitress

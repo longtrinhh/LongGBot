@@ -9,6 +9,7 @@ import time
 import grpc
 import re
 import secrets
+import tiktoken
 
 logger = logging.getLogger(__name__)
 
@@ -258,10 +259,17 @@ def add_firestore_message(user_id, conversation_id, message):
         return False
 
 def estimate_tokens(text):
-    """Simple token estimation: ~4 chars per token"""
+    """Estimate token count for text using tiktoken for accuracy."""
     if not text:
         return 0
-    return len(str(text)) // 4
+    try:
+        encoding = tiktoken.get_encoding("cl100k_base")
+        # Add 20 tokens overhead per message for safety (system prompts, formatting, etc.)
+        return len(encoding.encode(str(text))) + 20
+    except Exception as e:
+        logger.error(f"Error encoding tokens: {e}")
+        # Fallback to heuristic if tiktoken fails
+        return len(str(text)) // 4 + 10
 
 def add_firestore_messages_batch(user_id, conversation_id, messages_list):
     """Add multiple messages in a single batch write (append to array)"""
