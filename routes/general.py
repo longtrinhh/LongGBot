@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify, make_response, send_from_directory
-from config import CHAT_MODELS, IMAGE_GEN_MODELS
+from config import CHAT_MODELS, IMAGE_GEN_MODELS, FREE_MODELS
 from shared_context import (
     get_user_model, set_user_model, clear_user_context,
     get_firestore_conversations_for_user, get_firestore_conversation,
@@ -77,14 +77,7 @@ def get_user_key():
 
 def is_free_model(model):
     """Check if a model is in the free tier"""
-    free_models = [
-        'gpt-4o-mini-search-preview-2025-03-11',
-        'deepseek-v3.1:free',
-        'gpt-oss-120b:free',
-        'deepseek-r1-0528:free',
-        'kimi-k2-instruct-0905:free'
-    ]
-    return model in free_models
+    return model in FREE_MODELS
 
 @general_bp.route('/')
 def index():
@@ -94,10 +87,18 @@ def index():
         user_id = str(uuid.uuid4())
     premium = code_hash and code_hash in get_hashed_codes()
     user_key = code_hash if premium else user_id
+    
+    # Extract IDs for frontend
+    chat_model_ids = [m[0] for m in CHAT_MODELS]
+    image_model_ids = [m[0] for m in IMAGE_GEN_MODELS]
+    
     resp = make_response(render_template(
         'index.html',
         chat_models=CHAT_MODELS,
         image_models=IMAGE_GEN_MODELS,
+        free_models=FREE_MODELS,
+        chat_model_ids=chat_model_ids,
+        image_model_ids=image_model_ids,
         current_model=get_user_model(user_key, 'chat') or 'gpt-4o-mini-search-preview-2025-03-11',
         premium=premium
     ))

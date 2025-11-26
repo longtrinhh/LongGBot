@@ -187,8 +187,10 @@
                 <div class="chat-input-container">
                     <!-- Upload overlay menu -->
                     <div id="uploadOverlay" class="upload-overlay" style="display: none;">
-                        <button class="upload-option-btn" onclick="hideUploadMenu(); showImageUpload();" title="Upload Image"><i class="fas fa-image"></i></button>
-                        <button class="upload-option-btn" onclick="hideUploadMenu(); showDocumentUpload();" title="Upload Document (PDF/Word)"><i class="fas fa-file-alt"></i></button>
+                        <button class="upload-option-btn" onclick="hideUploadMenu(); showImageUpload();"
+                            title="Upload Image"><i class="fas fa-image"></i></button>
+                        <button class="upload-option-btn" onclick="hideUploadMenu(); showDocumentUpload();"
+                            title="Upload Document (PDF/Word)"><i class="fas fa-file-alt"></i></button>
                     </div>
                     <div class="chat-input-wrapper">
                         <textarea id="messageInput" class="chat-input" placeholder="Type your message here..."
@@ -360,17 +362,21 @@
         </div>
     </div>
 
-    <!-- Model ID mapping -->
-    <script id="model-names" type="application/json">{
-{% for model_id, model_name in chat_models %}    "{{ model_id }}": "{{ model_name }}"{% if not loop.last %},{% endif %}
+    <!-- Model Configuration -->
+    <script id="models-config" type="application/json">{
+        "chatModelIds": {{ chat_model_ids | tojson }},
+        "imageModelIds": {{ image_model_ids | tojson }},
+        "freeModels": {{ free_models | tojson }},
+        "modelNames": {
+{% for model_id, model_name in chat_models %}            "{{ model_id }}": "{{ model_name }}"{% if not loop.last %},{% endif %}
 {% endfor %}
-}</script>
+        }
+    }</script>
 
     <!-- Pass server-side variables to JavaScript -->
     <script>
         window.CURRENT_MODEL = '{{ current_model }}';
     </script>
-
     <!-- External libraries -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- KaTeX for LaTeX math rendering -->

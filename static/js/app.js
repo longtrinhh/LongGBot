@@ -69,36 +69,20 @@ let currentImageModel = localStorage.getItem('selectedImageModel') || 'imagen-4.
 let currentChatModel = localStorage.getItem('selectedChatModel') || window.CURRENT_MODEL || 'gpt-4o-mini-search-preview-2025-03-11';
 let currentConversationId = null;
 
-// Constants
-const PREMIUM_MODELS = [
-    "claude-sonnet-4-20250514-thinking",
-    "claude-sonnet-4-5-20250929-thinking",
-    "o3-high",
-    "gemini-2.5-pro-preview-05-06",
-    "grok-4-0709",
-    "gpt-5-chat-latest",
-    "gpt-5.1",
-    "deepseek-r1-0528",
-    "llama-4-maverick-17b-128e-instruct",
-    "phi-4-multimodal-instruct",
-    "sonar-reasoning-pro",
-    "o3-mini-online",
-    "imagen-4.0-ultra-generate-exp-05-20",
-    "flux-1-kontext-max",
-    "gpt-image-1",
-    "midjourney-v7",
-    "hidream-i1-full"
-];
-const FREE_MODELS = [
-    "gpt-4o-mini-search-preview-2025-03-11",
-    "deepseek-v3.1:free",
-    "gpt-oss-120b:free",
-    "deepseek-r1-0528:free",
-    "kimi-k2-instruct-0905:free"
-];
+// Parse model configuration from JSON script tag
+const MODEL_CONFIG = JSON.parse(document.getElementById('models-config').textContent);
+const FREE_MODELS = MODEL_CONFIG.freeModels;
+const MODEL_ID_TO_NAME = MODEL_CONFIG.modelNames;
 
-// Parse model ID to name mapping from JSON script tag
-const MODEL_ID_TO_NAME = JSON.parse(document.getElementById('model-names').textContent);
+// Derive Premium models (all chat models + all image models that are NOT in free models)
+// Note: We treat all image models as premium by default unless specified otherwise
+const ALL_CHAT_MODELS = MODEL_CONFIG.chatModelIds;
+const ALL_IMAGE_MODELS = MODEL_CONFIG.imageModelIds;
+
+const PREMIUM_MODELS = [
+    ...ALL_CHAT_MODELS.filter(id => !FREE_MODELS.includes(id)),
+    ...ALL_IMAGE_MODELS.filter(id => !FREE_MODELS.includes(id))
+];
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {

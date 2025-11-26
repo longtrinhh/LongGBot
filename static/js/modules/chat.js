@@ -592,6 +592,16 @@ export function addMessage(sender, content, type = 'normal', imageData = null) {
         }
     }
 
+    // Auto-remove success messages after 3 seconds
+    if (type === 'success') {
+        setTimeout(() => {
+            messageDiv.style.opacity = '0';
+            setTimeout(() => {
+                messageDiv.remove();
+            }, 400); // Wait for fade out transition
+        }, 3000);
+    }
+
     return messageDiv;
 }
 
