@@ -4,7 +4,7 @@ aiohttp
 asyncio
 Pillow
 requests
-PyPDF2
+pypdf
 python-docx
 tiktoken
 waitress

@@ -3,14 +3,14 @@ import { showCodeModal, showAlert, hideAllSelectors, hideSidebarOnMobile, getCac
 import { addMessage, createGeneratingIndicator, smoothScrollToBottom } from './chat.js';
 import { fetchWithCode, hasPremiumAccess } from './api.js';
 
-export function uploadImage(currentImageDataCallback) {
+export function uploadImage(currentImageDataCallback, providedFile = null) {
     if (!hasPremiumAccess()) {
         showAlert('Image upload is a premium feature. Enter a premium code to unlock.');
         showCodeModal();
         return;
     }
     const fileInput = document.getElementById('imageFile');
-    const file = fileInput.files[0];
+    const file = providedFile || fileInput.files[0];
 
     if (!file) {
         showAlert('Please select a file first');
@@ -25,20 +25,18 @@ export function uploadImage(currentImageDataCallback) {
         return;
     }
 
-    // Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    // Validate file size (max 20MB)
+    const maxSize = 20 * 1024 * 1024; // 20MB
     if (file.size > maxSize) {
-        showAlert('File size too large. Please select an image smaller than 10MB.');
+        showAlert('File size too large. Please select an image smaller than 20MB.');
         fileInput.value = '';
         return;
     }
 
-    // Add loading state to upload button - find the specific upload button
-    const uploadBtn = document.querySelector('#imageUploadModal button[onclick="uploadImage()"]');
-    if (uploadBtn) {
-        uploadBtn.classList.add('loading');
-        uploadBtn.disabled = true;
-        uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+    // Show loading overlay (absolute-positioned inside dropzone, no layout shift)
+    const loadingOverlay = document.getElementById('imageDropzoneLoading');
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'flex';
     }
 
     const formData = new FormData();
@@ -61,12 +59,9 @@ export function uploadImage(currentImageDataCallback) {
             return response.json();
         })
         .then(data => {
-            // Remove loading state
-            if (uploadBtn) {
-                uploadBtn.classList.remove('loading');
-                uploadBtn.disabled = false;
-                uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
-            }
+            // Hide loading overlay
+            const loadingOverlay = document.getElementById('imageDropzoneLoading');
+            if (loadingOverlay) loadingOverlay.style.display = 'none';
 
             if (data.success) {
                 currentImageDataCallback(data.image);
@@ -160,12 +155,9 @@ export function uploadImage(currentImageDataCallback) {
             clearTimeout(timeoutId); // Clear timeout on error
             console.error('Upload error:', error);
 
-            // Remove loading state
-            if (uploadBtn) {
-                uploadBtn.classList.remove('loading');
-                uploadBtn.disabled = false;
-                uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
-            }
+            // Hide loading overlay
+            const loadingOverlay = document.getElementById('imageDropzoneLoading');
+            if (loadingOverlay) loadingOverlay.style.display = 'none';
 
             let errorMessage = 'Error uploading image';
             if (error.name === 'AbortError') {
@@ -243,14 +235,14 @@ export function generateImage(currentImageModel) {
         });
 }
 
-export function uploadDocument(currentConversationId) {
+export function uploadDocument(currentConversationId, providedFile = null) {
     if (!hasPremiumAccess()) {
         showAlert('Document upload is a premium feature. Enter a premium code to unlock.');
         showCodeModal();
         return;
     }
     const fileInput = document.getElementById('documentFile');
-    const file = fileInput.files[0];
+    const file = providedFile || fileInput.files[0];
 
     if (!file) {
         showAlert('Please select a file first');
@@ -269,20 +261,18 @@ export function uploadDocument(currentConversationId) {
         return;
     }
 
-    // Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024;
+    // Validate file size (max 20MB)
+    const maxSize = 20 * 1024 * 1024;
     if (file.size > maxSize) {
-        showAlert('File size too large. Please select a document smaller than 10MB.');
+        showAlert('File size too large. Please select a document smaller than 20MB.');
         fileInput.value = '';
         return;
     }
 
-    // Add loading state
-    const uploadBtn = document.querySelector('#documentUploadModal button[onclick="uploadDocument()"]');
-    if (uploadBtn) {
-        uploadBtn.classList.add('loading');
-        uploadBtn.disabled = true;
-        uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+    // Show loading overlay (absolute-positioned inside dropzone, no layout shift)
+    const loadingOverlay = document.getElementById('documentDropzoneLoading');
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'flex';
     }
 
     const formData = new FormData();
@@ -304,12 +294,9 @@ export function uploadDocument(currentConversationId) {
             return response.json();
         })
         .then(data => {
-            // Remove loading state
-            if (uploadBtn) {
-                uploadBtn.classList.remove('loading');
-                uploadBtn.disabled = false;
-                uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
-            }
+            // Hide loading overlay
+            const loadingOverlay = document.getElementById('documentDropzoneLoading');
+            if (loadingOverlay) loadingOverlay.style.display = 'none';
 
             if (data.success) {
                 addMessage('assistant', data.message);
@@ -389,12 +376,9 @@ export function uploadDocument(currentConversationId) {
             clearTimeout(timeoutId);
             console.error('Upload error:', error);
 
-            // Remove loading state
-            if (uploadBtn) {
-                uploadBtn.classList.remove('loading');
-                uploadBtn.disabled = false;
-                uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
-            }
+            // Hide loading overlay
+            const loadingOverlay = document.getElementById('documentDropzoneLoading');
+            if (loadingOverlay) loadingOverlay.style.display = 'none';
 
             let errorMessage = 'Error uploading document';
             if (error.name === 'AbortError') {
@@ -409,6 +393,98 @@ export function uploadDocument(currentConversationId) {
             hideDocumentUpload();
             document.getElementById('documentFile').value = '';
         });
+}
+
+export function initUploadDropzones(getImageDataCallback, getConversationId) {
+    const imageFileInput = document.getElementById('imageFile');
+    const imageDropzone = document.getElementById('imageDropzone');
+    const imageModal = document.getElementById('imageUploadModal');
+
+    const documentFileInput = document.getElementById('documentFile');
+    const documentDropzone = document.getElementById('documentDropzone');
+    const documentModal = document.getElementById('documentUploadModal');
+
+    // ---- helpers ----
+    function highlightDropzone(dz) {
+        if (!dz) return;
+        dz.style.background = 'rgba(90,141,238,0.22)';
+        dz.style.borderColor = '#3a6dce';
+    }
+    function resetDropzone(dz) {
+        if (!dz) return;
+        dz.style.background = 'rgba(90,141,238,0.07)';
+        dz.style.borderColor = '#5a8dee';
+    }
+
+    // ---- Image: change event (file picker) ----
+    if (imageFileInput) {
+        imageFileInput.addEventListener('change', () => {
+            const file = imageFileInput.files[0];
+            if (file) {
+                uploadImage(getImageDataCallback, file);
+                // Reset after handing off so the same file can be re-selected next time
+                imageFileInput.value = '';
+            }
+        });
+    }
+
+    // ---- Image: drag on the full modal overlay (catches external OS drags) ----
+    if (imageModal) {
+        imageModal.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            highlightDropzone(imageDropzone);
+        });
+        imageModal.addEventListener('dragover', (e) => {
+            e.preventDefault(); // MUST be called every dragover to allow drop
+            highlightDropzone(imageDropzone);
+        });
+        imageModal.addEventListener('dragleave', (e) => {
+            // Only reset when the drag leaves the modal entirely
+            if (!imageModal.contains(e.relatedTarget)) {
+                resetDropzone(imageDropzone);
+            }
+        });
+        imageModal.addEventListener('drop', (e) => {
+            e.preventDefault();
+            resetDropzone(imageDropzone);
+            const file = e.dataTransfer.files[0];
+            if (file) uploadImage(getImageDataCallback, file);
+        });
+    }
+
+    // ---- Document: change event (file picker) ----
+    if (documentFileInput) {
+        documentFileInput.addEventListener('change', () => {
+            const file = documentFileInput.files[0];
+            if (file) {
+                uploadDocument(getConversationId(), file);
+                documentFileInput.value = '';
+            }
+        });
+    }
+
+    // ---- Document: drag on the full modal overlay ----
+    if (documentModal) {
+        documentModal.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            highlightDropzone(documentDropzone);
+        });
+        documentModal.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            highlightDropzone(documentDropzone);
+        });
+        documentModal.addEventListener('dragleave', (e) => {
+            if (!documentModal.contains(e.relatedTarget)) {
+                resetDropzone(documentDropzone);
+            }
+        });
+        documentModal.addEventListener('drop', (e) => {
+            e.preventDefault();
+            resetDropzone(documentDropzone);
+            const file = e.dataTransfer.files[0];
+            if (file) uploadDocument(getConversationId(), file);
+        });
+    }
 }
 
 export function clearUploadedDocument(currentConversationId) {

@@ -2,7 +2,7 @@ import io
 import os
 import logging
 from typing import Tuple, Optional
-import PyPDF2
+import pypdf
 from docx import Document
 
 logger = logging.getLogger(__name__)
@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 class DocumentProcessor:
     """Utility class for processing PDF and Word documents"""
     
-    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-    MAX_TEXT_LENGTH = 50000  # Limit extracted text to prevent token overflow
+    MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+    MAX_TEXT_LENGTH = 100000  # Limit extracted text to prevent token overflow
     
     @staticmethod
     def extract_text_from_pdf(file_data: bytes) -> Tuple[bool, str]:
@@ -26,30 +26,35 @@ class DocumentProcessor:
         """
         try:
             pdf_file = io.BytesIO(file_data)
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            pdf_reader = pypdf.PdfReader(pdf_file)
             
             if len(pdf_reader.pages) == 0:
                 return False, "PDF file appears to be empty or corrupted"
             
-            text_content = ""
-            max_pages = 50  # Limit to first 50 pages to prevent excessive processing
+            buf = io.StringIO()
+            max_pages = 100  # Limit to first 100 pages to prevent excessive processing
+            truncated = False
             
             for page_num, page in enumerate(pdf_reader.pages[:max_pages]):
                 try:
                     page_text = page.extract_text()
                     if page_text:
-                        text_content += f"\n--- Page {page_num + 1} ---\n"
-                        text_content += page_text
+                        buf.write(f"\n--- Page {page_num + 1} ---\n")
+                        buf.write(page_text)
                         
                         # Stop if we've extracted enough text
-                        if len(text_content) > DocumentProcessor.MAX_TEXT_LENGTH:
-                            text_content = text_content[:DocumentProcessor.MAX_TEXT_LENGTH]
-                            text_content += "\n\n[Document truncated - maximum text length reached]"
+                        if buf.tell() > DocumentProcessor.MAX_TEXT_LENGTH:
+                            truncated = True
                             break
                             
                 except Exception as e:
                     logger.warning(f"Error extracting text from page {page_num + 1}: {e}")
                     continue
+            
+            text_content = buf.getvalue()
+            if truncated:
+                text_content = text_content[:DocumentProcessor.MAX_TEXT_LENGTH]
+                text_content += "\n\n[Document truncated - maximum text length reached]"
             
             if not text_content.strip():
                 return False, "No readable text found in PDF. The PDF might contain only images or be password-protected."
@@ -75,39 +80,39 @@ class DocumentProcessor:
             docx_file = io.BytesIO(file_data)
             doc = Document(docx_file)
             
-            text_content = ""
+            buf = io.StringIO()
+            truncated = False
             
             # Extract text from paragraphs
             for paragraph in doc.paragraphs:
                 if paragraph.text.strip():
-                    text_content += paragraph.text + "\n"
-                    
-                    # Stop if we've extracted enough text
-                    if len(text_content) > DocumentProcessor.MAX_TEXT_LENGTH:
-                        text_content = text_content[:DocumentProcessor.MAX_TEXT_LENGTH]
-                        text_content += "\n\n[Document truncated - maximum text length reached]"
+                    buf.write(paragraph.text + "\n")
+                    if buf.tell() > DocumentProcessor.MAX_TEXT_LENGTH:
+                        truncated = True
                         break
             
             # Extract text from tables if not too much text already
-            if len(text_content) < DocumentProcessor.MAX_TEXT_LENGTH:
+            if not truncated:
                 for table in doc.tables:
-                    text_content += "\n--- Table ---\n"
+                    buf.write("\n--- Table ---\n")
                     for row in table.rows:
-                        row_text = []
-                        for cell in row.cells:
-                            if cell.text.strip():
-                                row_text.append(cell.text.strip())
+                        row_text = [
+                            cell.text.strip()
+                            for cell in row.cells
+                            if cell.text.strip()
+                        ]
                         if row_text:
-                            text_content += " | ".join(row_text) + "\n"
-                            
-                        # Stop if we've extracted enough text
-                        if len(text_content) > DocumentProcessor.MAX_TEXT_LENGTH:
-                            text_content = text_content[:DocumentProcessor.MAX_TEXT_LENGTH]
-                            text_content += "\n\n[Document truncated - maximum text length reached]"
+                            buf.write(" | ".join(row_text) + "\n")
+                        if buf.tell() > DocumentProcessor.MAX_TEXT_LENGTH:
+                            truncated = True
                             break
-                    
-                    if len(text_content) > DocumentProcessor.MAX_TEXT_LENGTH:
+                    if truncated:
                         break
+            
+            text_content = buf.getvalue()
+            if truncated:
+                text_content = text_content[:DocumentProcessor.MAX_TEXT_LENGTH]
+                text_content += "\n\n[Document truncated - maximum text length reached]"
             
             if not text_content.strip():
                 return False, "No readable text found in Word document."
@@ -131,7 +136,7 @@ class DocumentProcessor:
             Tuple of (success: bool, content: str, file_type: str or None)
         """
         if len(file_data) > DocumentProcessor.MAX_FILE_SIZE:
-            return False, "File size too large. Please upload a document smaller than 10MB.", None
+            return False, "File size too large. Please upload a document smaller than 20MB.", None
         
         file_extension = os.path.splitext(filename.lower())[1]
         
@@ -162,7 +167,7 @@ class DocumentProcessor:
             return False, "No file selected"
         
         if file_size > DocumentProcessor.MAX_FILE_SIZE:
-            return False, "File size too large. Please upload a document smaller than 10MB."
+            return False, "File size too large. Please upload a document smaller than 20MB."
         
         file_extension = os.path.splitext(filename.lower())[1]
         supported_extensions = {'.pdf', '.docx'}

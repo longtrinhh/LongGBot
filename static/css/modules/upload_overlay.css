@@ -56,3 +56,75 @@ body.dark-mode .upload-option-btn:hover {
         right: 54px;
     }
 }
+
+/* Drag-and-drop upload zone */
+.upload-dropzone {
+    border: 2px dashed #5a8dee;
+    border-radius: 12px;
+    padding: 40px 28px;
+    margin-bottom: 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, transform 0.15s;
+    user-select: none;
+    background: rgba(90, 141, 238, 0.05);
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.upload-dropzone:hover {
+    border-color: var(--color-primary, #1976d2);
+    background: rgba(90, 141, 238, 0.12);
+}
+
+.upload-dropzone.dragover {
+    border-color: #5a8dee;
+    background: rgba(90, 141, 238, 0.18);
+    transform: scale(1.02);
+}
+
+.upload-dropzone.uploading {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.upload-dropzone-icon {
+    font-size: 2.6rem;
+    color: #5a8dee;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.upload-dropzone-text {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0 0 2px;
+}
+
+.upload-dropzone-subtext {
+    font-size: 0.85rem;
+    color: #5a8dee;
+    margin: 0 0 6px;
+    font-weight: 500;
+}
+
+.upload-dropzone-hint {
+    font-size: 0.78rem;
+    color: var(--color-text-secondary, #999);
+    margin: 0;
+}
+
+body.dark-mode .upload-dropzone {
+    border-color: #5a8dee;
+    background: rgba(90, 141, 238, 0.08);
+}
+
+body.dark-mode .upload-dropzone:hover,
+body.dark-mode .upload-dropzone.dragover {
+    background: rgba(90, 141, 238, 0.18);
+}

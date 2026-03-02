@@ -78,6 +78,9 @@ export function hideModelSelector(type) {
 export function showImageUpload() {
     hideAllSelectors();
     hideSidebarOnMobile();
+    // Reset loading overlay from any previous upload attempt
+    const loadingOverlay = document.getElementById('imageDropzoneLoading');
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
     const modal = document.getElementById('imageUploadModal');
     modal.style.display = 'flex';
     modal.style.opacity = '0';
@@ -125,6 +128,9 @@ export function showDocumentUpload() {
     }
     hideAllSelectors();
     hideSidebarOnMobile();
+    // Reset loading overlay from any previous upload attempt
+    const loadingOverlay = document.getElementById('documentDropzoneLoading');
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
     const modal = document.getElementById('documentUploadModal');
     modal.style.display = 'flex';
     modal.style.opacity = '0';

@@ -66,8 +66,10 @@ export function sendMessage(currentImageData, currentConversationId, setCurrentC
     addMessage('user', message);
     input.value = '';
 
-    // Reset input styling and remove image indicator only
-    // Keep document indicator visible for multiple questions
+    // Capture whether a document is active before removing indicators
+    const hadDocument = !!document.getElementById('documentIndicator');
+
+    // Reset input styling and remove both image and document indicators after sending
     input.placeholder = "Type your message here...";
     input.style.borderColor = "";
     input.style.boxShadow = "";
@@ -75,15 +77,16 @@ export function sendMessage(currentImageData, currentConversationId, setCurrentC
     if (imageIndicator) {
         imageIndicator.remove();
     }
-
-    // If a document indicator exists, keep it for this request so the server can read the doc
-    // The indicator and backend state will be cleared after the response completes
+    const documentIndicator = document.getElementById('documentIndicator');
+    if (documentIndicator) {
+        documentIndicator.remove();
+    }
 
     // Insert an animated 'thinking...' assistant message and keep its element
     let thinkingMessage = createThinkingIndicator();
     if (currentImageData) {
         thinkingMessage = createThinkingIndicator().replace('thinking', 'analyzing image');
-    } else if (document.getElementById('documentIndicator')) {
+    } else if (hadDocument) {
         thinkingMessage = createThinkingIndicator().replace('thinking', 'analyzing document');
     }
     const thinkingDiv = addMessage('assistant', thinkingMessage, 'thinking');
@@ -281,22 +284,6 @@ export function sendMessage(currentImageData, currentConversationId, setCurrentC
                                     isStreaming = false;
                                     userScrolledUp = false;
                                     currentStreamReader = null;
-
-                                    const docInd2 = document.getElementById('documentIndicator');
-                                    if (docInd2) {
-                                        docInd2.remove();
-                                        fetch('/clear_document', {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ conversation_id: currentConversationId || null })
-                                        }).catch(() => { });
-                                        const msgInput2 = document.getElementById('messageInput');
-                                        if (msgInput2) {
-                                            msgInput2.placeholder = 'Type your message here...';
-                                            msgInput2.style.borderColor = '';
-                                            msgInput2.style.boxShadow = '';
-                                        }
-                                    }
 
                                     // Add copy buttons to the just-finished message (only the last one for efficiency)
                                     setTimeout(() => {

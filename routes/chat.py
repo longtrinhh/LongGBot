@@ -3,7 +3,7 @@ from ai_client import ask_ai, ask_ai_stream
 from shared_context import (
     get_user_model, get_firestore_conversation, create_firestore_conversation,
     add_firestore_message, set_conversation_title_if_default, get_user_document,
-    add_firestore_messages_batch,
+    add_firestore_messages_batch, mark_document_injected,
     sanitize_input
 )
 from routes.general import get_user_key, check_rate_limit, get_hashed_codes, is_free_model
@@ -144,8 +144,8 @@ def chat():
                 pending_messages.append({ 'role': 'system', 'content': system_text })
                 # Also include in the in-memory context for this immediate call
                 context = (context or []) + [{ 'role': 'system', 'content': system_text }]
-                # Mark as injected for this conversation
-                document['injected_conversation_id'] = conversation_id
+                # Mark as injected for this conversation (persisted to Firestore for multi-worker safety)
+                mark_document_injected(user_key, conversation_id)
                 
                 # Re-apply context limiting after document injection
                 if premium:
@@ -256,6 +256,7 @@ def chat_stream():
                 pending_messages.append({ 'role': 'system', 'content': system_text })
                 context = (context or []) + [{ 'role': 'system', 'content': system_text }]
                 document['injected_conversation_id'] = conversation_id
+                mark_document_injected(user_key, conversation_id)
                 
                 # Re-apply context limiting after document injection
                 if premium:

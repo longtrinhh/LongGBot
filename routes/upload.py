@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from werkzeug.utils import secure_filename
 from routes.general import get_user_key, get_hashed_codes, set_conversation_title_if_default
 from shared_context import set_user_document
 from document_processor import DocumentProcessor
@@ -28,19 +29,20 @@ def upload_image():
         if file.filename == '':
             return jsonify({'error': 'No image file selected'}), 400
         
+        safe_filename = secure_filename(file.filename)
         allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
-        file_extension = os.path.splitext(file.filename.lower())[1]
+        file_extension = os.path.splitext(safe_filename.lower())[1]
         
         if file_extension not in allowed_extensions:
             return jsonify({'error': 'Only image files are allowed. Please upload a JPEG, PNG, GIF, WebP, or BMP file.'}), 400
         
-        max_size = 10 * 1024 * 1024
+        max_size = 20 * 1024 * 1024
         file.seek(0, 2)
         file_size = file.tell()
         file.seek(0)
         
         if file_size > max_size:
-            return jsonify({'error': 'File size too large. Please upload an image smaller than 10MB.'}), 400
+            return jsonify({'error': 'File size too large. Please upload an image smaller than 20MB.'}), 400
         
         file.seek(0)
         image_data = file.read()
@@ -59,8 +61,8 @@ def upload_image():
             elif img.mode != 'RGB':
                 img = img.convert('RGB')
                 
-            # Resize if too large (max 1024x1024)
-            max_size = 1024
+            # Resize if too large (max 2048x2048)
+            max_size = 2048
             if img.width > max_size or img.height > max_size:
                 img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
             
@@ -97,6 +99,7 @@ def upload_document():
             return jsonify({'error': 'No document file provided'}), 400
             
         file = request.files['document']
+        safe_filename = secure_filename(file.filename) if file.filename else file.filename
         
         if file.filename == '':
             return jsonify({'error': 'No document file selected'}), 400
@@ -106,7 +109,7 @@ def upload_document():
         file_size = file.tell()
         file.seek(0)  # Seek back to beginning
         
-        is_valid, error_message = DocumentProcessor.validate_document_file(file.filename, file_size)
+        is_valid, error_message = DocumentProcessor.validate_document_file(safe_filename, file_size)
         if not is_valid:
             return jsonify({'error': error_message}), 400
         
@@ -114,29 +117,29 @@ def upload_document():
         file_data = file.read()
         
         # Process document and extract text
-        success, content, file_type = DocumentProcessor.process_document(file_data, file.filename)
+        success, content, file_type = DocumentProcessor.process_document(file_data, safe_filename)
         
         if not success:
             return jsonify({'error': content}), 400
         
         # Store document content for the user
-        set_user_document(user_key, content, file.filename, file_type)
+        set_user_document(user_key, content, safe_filename, file_type)
         
         # If a conversation id was provided in headers or query, try to set a title
         conv_hint = request.args.get('conversation_id') or request.headers.get('X-Conversation-Id')
         if conv_hint:
             try:
                 # Prefer document filename as a friendly title if current title is default
-                base_title = os.path.splitext(file.filename)[0]
+                base_title = os.path.splitext(safe_filename)[0]
                 set_conversation_title_if_default(user_key, conv_hint, base_title)
             except Exception:
                 pass
         
         return jsonify({
             'success': True,
-            'filename': file.filename,
+            'filename': safe_filename,
             'file_type': file_type,
-            'message': f'Document "{file.filename}" uploaded and processed successfully! You can ask multiple questions about its content. Click the green indicator to remove the document when done.'
+            'message': f'Document "{safe_filename}" uploaded and processed successfully! You can ask multiple questions about its content. Click the green indicator to remove the document when done.'
         })
         
     except Exception as e:

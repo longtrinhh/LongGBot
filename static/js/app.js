@@ -43,7 +43,8 @@ import {
     generateImage,
     uploadDocument,
     handlePaste,
-    clearUploadedDocument
+    clearUploadedDocument,
+    initUploadDropzones
 } from './modules/image.js';
 
 import {
@@ -132,6 +133,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Setup event listeners
     setupEventListeners();
+
+    // Initialize drag-and-drop + auto-upload for both upload modals
+    initUploadDropzones(
+        (data) => { currentImageData = data; },
+        () => currentConversationId
+    );
 
     // Handle viewport changes for mobile
     setupViewportHandling();

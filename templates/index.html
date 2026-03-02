@@ -260,10 +260,20 @@
     <div id="imageUploadModal" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <div class="section-title">Upload Image</div>
-            <input type="file" id="imageFile" accept="image/*" class="image-upload">
-            <button class="btn" onclick="document.getElementById('imageFile').click()"><i
-                    class="fas fa-folder-open"></i> Choose File</button>
-            <button class="btn" onclick="uploadImage()"><i class="fas fa-upload"></i> Upload</button>
+            <label for="imageFile" id="imageDropzone"
+                style="border:2px dashed #5a8dee;border-radius:12px;padding:32px 20px;margin-bottom:12px;text-align:center;cursor:pointer;background:rgba(90,141,238,0.07);display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;">
+                <i class="fas fa-cloud-upload-alt" style="font-size:2.2rem;color:#5a8dee;pointer-events:none;"></i>
+                <div style="font-size:0.95rem;font-weight:600;pointer-events:none;">Drag &amp; drop an image here</div>
+                <div style="font-size:0.78rem;color:#999;pointer-events:none;">JPEG, PNG, GIF, WebP, BMP &nbsp;&middot;&nbsp; max 20 MB</div>
+                <span id="imageDropzoneBtn" style="display:inline-flex;align-items:center;gap:6px;background:#5a8dee;color:#fff;border-radius:7px;padding:8px 18px;font-size:0.87rem;font-weight:600;margin-top:6px;pointer-events:none;">
+                    <i class="fas fa-folder-open"></i> Choose File
+                </span>
+                <div id="imageDropzoneLoading" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.35);border-radius:12px;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:#fff;font-weight:600;">
+                    <i class="fas fa-spinner fa-spin" style="font-size:1.8rem;"></i>
+                    <span>Uploading...</span>
+                </div>
+                <input type="file" id="imageFile" accept="image/*" style="display:none;">
+            </label>
             <button class="btn" onclick="hideImageUpload()">Cancel</button>
         </div>
     </div>
@@ -272,12 +282,20 @@
     <div id="documentUploadModal" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <div class="section-title">Upload Document</div>
-            <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">Upload PDF or Word documents (.pdf, .docx) to
-                analyze and ask questions about their content.</p>
-            <input type="file" id="documentFile" accept=".pdf,.docx" class="image-upload">
-            <button class="btn" onclick="document.getElementById('documentFile').click()"><i
-                    class="fas fa-folder-open"></i> Choose File</button>
-            <button class="btn" onclick="uploadDocument()"><i class="fas fa-upload"></i> Upload</button>
+            <label for="documentFile" id="documentDropzone"
+                style="border:2px dashed #5a8dee;border-radius:12px;padding:32px 20px;margin-bottom:12px;text-align:center;cursor:pointer;background:rgba(90,141,238,0.07);display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;">
+                <i class="fas fa-file-alt" style="font-size:2.2rem;color:#5a8dee;pointer-events:none;"></i>
+                <div style="font-size:0.95rem;font-weight:600;pointer-events:none;">Drag &amp; drop a document here</div>
+                <div style="font-size:0.78rem;color:#999;pointer-events:none;">PDF, DOCX &nbsp;&middot;&nbsp; max 20 MB</div>
+                <span id="documentDropzoneBtn" style="display:inline-flex;align-items:center;gap:6px;background:#5a8dee;color:#fff;border-radius:7px;padding:8px 18px;font-size:0.87rem;font-weight:600;margin-top:6px;pointer-events:none;">
+                    <i class="fas fa-folder-open"></i> Choose File
+                </span>
+                <div id="documentDropzoneLoading" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.35);border-radius:12px;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:#fff;font-weight:600;">
+                    <i class="fas fa-spinner fa-spin" style="font-size:1.8rem;"></i>
+                    <span>Processing...</span>
+                </div>
+                <input type="file" id="documentFile" accept=".pdf,.docx" style="display:none;">
+            </label>
             <button class="btn" onclick="hideDocumentUpload()">Cancel</button>
         </div>
     </div>

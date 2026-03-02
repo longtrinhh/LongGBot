@@ -446,26 +446,75 @@ def generate_title_from_text(text: str) -> str:
         candidate = candidate[:max_len].rstrip() + "…"
     return candidate or "New Conversation"
 
+USER_DOCUMENTS_COLLECTION = "user_documents"
+
 def set_user_document(user_key: str, content: str, filename: str, file_type: str):
     user_key_str = str(user_key)
-    user_documents[user_key_str] = {
+    doc_data = {
         'content': content,
         'filename': filename,
         'file_type': file_type,
-        'injected_conversation_id': None
+        'injected_conversation_id': None,
+        'uploaded_at': datetime.utcnow().isoformat()
     }
+    # Update in-memory cache immediately
+    user_documents[user_key_str] = doc_data
+    # Persist to Firestore so all workers can access it
+    client = get_firestore_client()
+    if client:
+        try:
+            client.collection(USER_DOCUMENTS_COLLECTION).document(user_key_str).set(doc_data, timeout=5.0)
+        except Exception as e:
+            logger.error(f"Error saving user document to Firestore: {e}")
 
 def get_user_document(user_key: str) -> Optional[Dict]:
     user_key_str = str(user_key)
-    return user_documents.get(user_key_str)
+    # Return from in-memory cache if available
+    if user_key_str in user_documents:
+        return user_documents[user_key_str]
+    # Fall back to Firestore (handles multi-worker deployments and server restarts)
+    client = get_firestore_client()
+    if not client:
+        return None
+    try:
+        doc = client.collection(USER_DOCUMENTS_COLLECTION).document(user_key_str).get(timeout=5.0)
+        if doc.exists:
+            data = doc.to_dict()
+            user_documents[user_key_str] = data  # Populate cache
+            return data
+    except Exception as e:
+        logger.error(f"Error fetching user document from Firestore: {e}")
+    return None
+
+def mark_document_injected(user_key: str, conversation_id: str):
+    """Mark the document as injected into a conversation. Updates both cache and Firestore."""
+    user_key_str = str(user_key)
+    if user_key_str in user_documents:
+        user_documents[user_key_str]['injected_conversation_id'] = conversation_id
+    client = get_firestore_client()
+    if client:
+        try:
+            client.collection(USER_DOCUMENTS_COLLECTION).document(user_key_str).update(
+                {'injected_conversation_id': conversation_id}, timeout=5.0
+            )
+        except Exception as e:
+            logger.error(f"Error updating injected_conversation_id in Firestore: {e}")
 
 def clear_user_document(user_key: str):
     user_key_str = str(user_key)
     if user_key_str in user_documents:
         del user_documents[user_key_str]
+    client = get_firestore_client()
+    if client:
+        try:
+            client.collection(USER_DOCUMENTS_COLLECTION).document(user_key_str).delete(timeout=5.0)
+        except Exception as e:
+            logger.error(f"Error deleting user document from Firestore: {e}")
 
 def has_user_document(user_key: str) -> bool:
     user_key_str = str(user_key)
-    return user_key_str in user_documents
+    if user_key_str in user_documents:
+        return True
+    return get_user_document(user_key) is not None
 
 load_data()
